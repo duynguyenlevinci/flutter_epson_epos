@@ -144,133 +144,52 @@ class MessageHelper {
             result = "PRINT_SUCCESS"
             break
         case EPOS2_CODE_PRINTING.rawValue:
-            result = "PRINTING"
+            result = "Printing job is in progress."
             break
         case EPOS2_CODE_ERR_AUTORECOVER.rawValue:
-            result = "ERR_AUTORECOVER"
+            result = "Automatic recovery error occurred."
             break
         case EPOS2_CODE_ERR_COVER_OPEN.rawValue:
-            result = "ERR_COVER_OPEN"
+            result = "Please close roll paper cover."
             break
         case EPOS2_CODE_ERR_CUTTER.rawValue:
-            result = "ERR_CUTTER"
+            result = "Please remove jammed paper and close roll paper cover.\nRemove any jammed paper or foreign substances in the printer, and then turn the printer off and turn the printer on again."
             break
         case EPOS2_CODE_ERR_MECHANICAL.rawValue:
-            result = "ERR_MECHANICAL"
+            result = "Mechanical error occurred."
             break
         case EPOS2_CODE_ERR_EMPTY.rawValue:
-            result = "ERR_EMPTY"
+            result = "Please check roll paper."
             break
         case EPOS2_CODE_ERR_UNRECOVERABLE.rawValue:
-            result = "ERR_UNRECOVERABLE"
+            result = "Please cycle the power switch of the printer.\nIf same errors occurred even power cycled, the printer may be out of order."
             break
         case EPOS2_CODE_ERR_FAILURE.rawValue:
-            result = "ERR_FAILURE"
+            result = "Print job failed."
             break
         case EPOS2_CODE_ERR_NOT_FOUND.rawValue:
-            result = "ERR_NOT_FOUND"
+            result = "Printer not found."
             break
         case EPOS2_CODE_ERR_SYSTEM.rawValue:
-            result = "ERR_SYSTEM"
+            result = "System error occurred."
             break
         case EPOS2_CODE_ERR_PORT.rawValue:
-            result = "ERR_PORT"
+            result = "Port error occurred. Please check the connection."
             break
         case EPOS2_CODE_ERR_TIMEOUT.rawValue:
-            result = "ERR_TIMEOUT"
+            result = "Please check the connection of the printer and the mobile terminal.\nConnection timeout."
             break
         case EPOS2_CODE_ERR_JOB_NOT_FOUND.rawValue:
-            result = "ERR_JOB_NOT_FOUND"
+            result = "Print job not found."
             break
         case EPOS2_CODE_ERR_SPOOLER.rawValue:
-            result = "ERR_SPOOLER"
+            result = "Spooler error occurred."
             break
         case EPOS2_CODE_ERR_BATTERY_LOW.rawValue:
-            result = "ERR_BATTERY_LOW"
+            result = "Battery of printer is almost empty."
             break
-        case EPOS2_CODE_ERR_TOO_MANY_REQUESTS.rawValue:
-            result = "ERR_TOO_MANY_REQUESTS"
-            break
-        case EPOS2_CODE_ERR_REQUEST_ENTITY_TOO_LARGE.rawValue:
-            result = "ERR_REQUEST_ENTITY_TOO_LARGE"
-            break
-        case EPOS2_CODE_ERR_INVALID_WINDOW.rawValue:
-            result = "EPOS2_CODE_ERR_INVALID_WINDOW";
-            break;
-        case EPOS2_CODE_CANCELED.rawValue:
-            result = "EPOS2_CODE_CANCELED";
-            break;
-        case EPOS2_CODE_ERR_RECOGNITION.rawValue:
-            result = "EPOS2_CODE_ERR_RECOGNITION";
-            break;
-        case EPOS2_CODE_ERR_READ.rawValue:
-            result = "EPOS2_CODE_ERR_READ";
-            break;
-        case EPOS2_CODE_ERR_PAPER_JAM.rawValue:
-            result = "EPOS2_CODE_ERR_PAPER_JAM";
-            break;
-        case EPOS2_CODE_ERR_PAPER_PULLED_OUT.rawValue:
-            result = "EPOS2_CODE_ERR_PAPER_PULLED_OUT";
-            break;
-        case EPOS2_CODE_ERR_CANCEL_FAILED.rawValue:
-            result = "EPOS2_CODE_ERR_CANCEL_FAILED";
-            break;
-        case EPOS2_CODE_ERR_PAPER_TYPE.rawValue:
-            result = "EPOS2_CODE_ERR_PAPER_TYPE";
-            break;
-        case EPOS2_CODE_ERR_WAIT_INSERTION.rawValue:
-            result = "EPOS2_CODE_ERR_WAIT_INSERTION";
-            break;
-        case EPOS2_CODE_ERR_ILLEGAL.rawValue:
-            result = "EPOS2_CODE_ERR_ILLEGAL";
-            break;
-        case EPOS2_CODE_ERR_INSERTED.rawValue:
-            result = "EPOS2_CODE_ERR_INSERTED";
-            break;
-        case EPOS2_CODE_ERR_WAIT_REMOVAL.rawValue:
-            result = "EPOS2_CODE_ERR_WAIT_REMOVAL";
-            break;
-        case EPOS2_CODE_ERR_DEVICE_BUSY.rawValue:
-            result = "EPOS2_CODE_ERR_DEVICE_BUSY";
-            break;
-        case EPOS2_CODE_ERR_IN_USE.rawValue:
-            result = "EPOS2_CODE_ERR_IN_USE";
-            break;
-        case EPOS2_CODE_ERR_CONNECT.rawValue:
-            result = "EPOS2_CODE_ERR_CONNECT";
-            break;
-        case EPOS2_CODE_ERR_DISCONNECT.rawValue:
-            result = "EPOS2_CODE_ERR_DISCONNECT";
-            break;
-        case EPOS2_CODE_ERR_MEMORY.rawValue:
-            result = "EPOS2_CODE_ERR_MEMORY";
-            break;
-        case EPOS2_CODE_ERR_PROCESSING.rawValue:
-            result = "EPOS2_CODE_ERR_PROCESSING";
-            break;
-        case EPOS2_CODE_ERR_PARAM.rawValue:
-            result = "EPOS2_CODE_ERR_PARAM";
-            break;
-        case EPOS2_CODE_RETRY.rawValue:
-            result = "EPOS2_CODE_RETRY";
-            break;
-        case EPOS2_CODE_ERR_DIFFERENT_MODEL.rawValue:
-            result = "EPOS2_CODE_ERR_DIFFERENT_MODEL";
-            break;
-        case EPOS2_CODE_ERR_DIFFERENT_VERSION.rawValue:
-            result = "EPOS2_CODE_ERR_DIFFERENT_VERSION";
-            break;
-        case EPOS2_CODE_ERR_DATA_CORRUPTED.rawValue:
-            result = "EPOS2_CODE_ERR_DATA_CORRUPTED";
-            break;
-        case EPOS2_CODE_ERR_RECOVERY_FAILURE.rawValue:
-            result = "EPOS2_CODE_ERR_RECOVERY_FAILURE";
-            break;
-        case EPOS2_CODE_ERR_JSON_FORMAT.rawValue:
-            result = "EPOS2_CODE_ERR_JSON_FORMAT";
-            break;
         default:
-            result = String(format:"%d", resultCode)
+            result = String(format:"Print result error: %d", resultCode)
             break
         }
         

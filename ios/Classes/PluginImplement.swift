@@ -21,6 +21,7 @@ class PluginImplement: NSObject {
     
     private var valuePrinterSeries: Epos2PrinterSeries = EPOS2_TM_M10
     private var valuePrinterModel: Epos2ModelLang = EPOS2_MODEL_SOUTHASIA
+    private var printType: String = ""
     
     private enum Constants {
         static let discoverLookupInterval = 4.0 // 4 seconds
@@ -134,11 +135,25 @@ private extension PluginImplement {
     }
     
     func handlePrinterReceive(code: Int32, status: Epos2PrinterStatusInfo) {
-        let errorMessage = makeErrorMessage(status)
-        let resp = EpsonEposPrinterResult(type: PluginMethods.onPrint.rawValue, success: false)
-        let message = MessageHelper.result(code, errMessage: errorMessage)
-        resp.message = message
-        resp.success = code == EPOS2_CODE_SUCCESS.rawValue
+        let errorFromStatus = makeErrorMessage(status)
+        let resp = EpsonEposPrinterResult(type: "onPrint\(printType)", success: false)
+        resp.code = code
+        
+        let hasSpecificError = !(errorFromStatus["code"]?.isEmpty ?? true) && errorFromStatus["code"] != "ERR_UNKNOWN"
+        
+        if code == EPOS2_CODE_SUCCESS.rawValue && !hasSpecificError {
+            resp.success = true
+            resp.message = "Success"
+        } else {
+            resp.success = false
+            if hasSpecificError {
+                resp.message = errorFromStatus["message"]
+                resp.content = errorFromStatus["code"]
+            } else {
+                resp.message = MessageHelper.result(code, errMessage: "")
+                resp.content = "ERR_PRINT_CODE_\(code)"
+            }
+        }
         
         self.result?(try? resp.toJSONString())
     }
@@ -165,6 +180,7 @@ extension PluginImplement: Epos2DiscoveryDelegate {
 extension PluginImplement: Epos2PtrReceiveDelegate {
     public func onPrint(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         self.result = result
+        self.printType = "" // Reset or set based on call if needed
         
         guard initializePrinterObject() == true else {
             let resp = EpsonEposPrinterResult(type: call.method, success: false)
@@ -205,28 +221,27 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         
         let resp = EpsonEposPrinterResult(type: call.method, success: false)
         do {
-            //        var statusInfo: Epos2PrinterStatusInfo? = printer.getStatus()
-//            print(
-//                "Printing $target $series Connection: ${statusInfo?.connection} online: ${statusInfo?.online} cover: ${statusInfo?.coverOpen} Paper: ${statusInfo?.paper} ErrorSt: ${statusInfo?.errorStatus} Battery Level: ${statusInfo?.batteryLevel}"
-//            )
             let status = printer.sendData(Int(EPOS2_PARAM_DEFAULT))
             if status != EPOS2_SUCCESS.rawValue {
                 let message = MessageHelper.errorEpos(status, method: "sendData")
                 resp.message = message
                 resp.success = false
+                resp.content = "ERR_SEND_DATA_\(status)"
                 
                 printer.clearCommandBuffer()
                 printer.disconnect()
+                result(try resp.toJSONString());
             } else {
-                resp.success = true
-                resp.message = "Printed \(target) \(series)"
+                // Wait for onPtrReceive
+                print("Sent data to printer \(target) \(series)")
+                // resp.success = true
+                // resp.message = "Printed \(target) \(series)"
+                // result(try resp.toJSONString());
             }
-            //      Log.d(logTag, resp.toJSON())
-            result(try resp.toJSONString());
         } catch let error {
-//                  ex.printStackTrace()
-//                  Log.e(logTag, "sendData Error" + ex.errorStatus, ex)
-//             disconnectPrinter()
+            resp.message = error.localizedDescription
+            resp.success = false
+            result(try? resp.toJSONString())
         }
     }
     
@@ -329,63 +344,82 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
 //        })
     }
 
-    func makeErrorMessage(_ status: Epos2PrinterStatusInfo?) -> String {
-        let errMsg = NSMutableString()
+    func makeErrorMessage(_ status: Epos2PrinterStatusInfo?) -> [String: String] {
+        var errMsg = ""
+        var errCode = ""
         guard let status = status else {
-            return ""
+            return ["message": "", "code": "ERR_UNKNOWN"]
         }
     
         if status.online == EPOS2_FALSE {
-            errMsg.append(NSLocalizedString("err_offline", comment:""))
+            errMsg += NSLocalizedString("err_offline", comment:"")
+            errCode = "ERR_OFFLINE"
         }
         if status.connection == EPOS2_FALSE {
-            errMsg.append(NSLocalizedString("err_no_response", comment:""))
+            errMsg += NSLocalizedString("err_no_response", comment:"")
+            errCode = "ERR_NO_RESPONSE"
         }
         if status.coverOpen == EPOS2_TRUE {
-            errMsg.append(NSLocalizedString("err_cover_open", comment:""))
+            errMsg += NSLocalizedString("err_cover_open", comment:"")
+            errCode = "ERR_COVER_OPEN"
         }
         if status.paper == EPOS2_PAPER_EMPTY.rawValue {
-            errMsg.append(NSLocalizedString("err_receipt_end", comment:""))
+            errMsg += NSLocalizedString("err_receipt_end", comment:"")
+            errCode = "ERR_RECEIPT_END"
         }
         if status.paperFeed == EPOS2_TRUE || status.panelSwitch == EPOS2_SWITCH_ON.rawValue {
-            errMsg.append(NSLocalizedString("err_paper_feed", comment:""))
+            errMsg += NSLocalizedString("err_paper_feed", comment:"")
+            errCode = "ERR_PAPER_FEED"
         }
         if status.errorStatus == EPOS2_MECHANICAL_ERR.rawValue || status.errorStatus == EPOS2_AUTOCUTTER_ERR.rawValue {
-            errMsg.append(NSLocalizedString("err_autocutter", comment:""))
-            errMsg.append(NSLocalizedString("err_need_recover", comment:""))
+            errMsg += NSLocalizedString("err_autocutter", comment:"")
+            errMsg += NSLocalizedString("err_need_recover", comment:"")
+            errCode = "ERR_AUTOCUTTER"
         }
         if status.errorStatus == EPOS2_UNRECOVER_ERR.rawValue {
-            errMsg.append(NSLocalizedString("err_unrecover", comment:""))
+            errMsg += NSLocalizedString("err_unrecover", comment:"")
+            errCode = "ERR_UNRECOVER"
         }
     
         if status.errorStatus == EPOS2_AUTORECOVER_ERR.rawValue {
             if status.autoRecoverError == EPOS2_HEAD_OVERHEAT.rawValue {
-                errMsg.append(NSLocalizedString("err_overheat", comment:""))
-                errMsg.append(NSLocalizedString("err_head", comment:""))
+                errMsg += NSLocalizedString("err_head", comment:"")
+                errMsg += NSLocalizedString("err_overheat", comment:"")
+                errCode = "ERR_OVERHEAT_HEAD"
             }
             if status.autoRecoverError == EPOS2_MOTOR_OVERHEAT.rawValue {
-                errMsg.append(NSLocalizedString("err_overheat", comment:""))
-                errMsg.append(NSLocalizedString("err_motor", comment:""))
+                errMsg += NSLocalizedString("err_motor", comment:"")
+                errMsg += NSLocalizedString("err_overheat", comment:"")
+                errCode = "ERR_OVERHEAT_MOTOR"
             }
             if status.autoRecoverError == EPOS2_BATTERY_OVERHEAT.rawValue {
-                errMsg.append(NSLocalizedString("err_overheat", comment:""))
-                errMsg.append(NSLocalizedString("err_battery", comment:""))
+                errMsg += NSLocalizedString("err_battery", comment:"")
+                errMsg += NSLocalizedString("err_overheat", comment:"")
+                errCode = "ERR_OVERHEAT_BATTERY"
             }
             if status.autoRecoverError == EPOS2_WRONG_PAPER.rawValue {
-                errMsg.append(NSLocalizedString("err_wrong_paper", comment:""))
+                errMsg += NSLocalizedString("err_wrong_paper", comment:"")
+                errCode = "ERR_WRONG_PAPER"
             }
         }
         if status.batteryLevel == EPOS2_BATTERY_LEVEL_0.rawValue {
-            errMsg.append(NSLocalizedString("err_battery_real_end", comment:""))
+            errMsg += NSLocalizedString("err_battery_real_end", comment:"")
+            errCode = "ERR_BATTERY_END"
         }
         if (status.removalWaiting == EPOS2_REMOVAL_WAIT_PAPER.rawValue) {
-            errMsg.append(NSLocalizedString("err_wait_removal", comment:""))
+            errMsg += NSLocalizedString("err_wait_removal", comment:"")
+            errCode = "ERR_WAIT_REMOVAL"
         }
         if (status.unrecoverError == EPOS2_HIGH_VOLTAGE_ERR.rawValue ||
             status.unrecoverError == EPOS2_LOW_VOLTAGE_ERR.rawValue) {
-            errMsg.append(NSLocalizedString("err_voltage", comment:""));
+            errMsg += NSLocalizedString("err_voltage", comment:"");
+            errCode = "ERR_VOLTAGE"
         }
     
-        return errMsg as String
+        if errMsg.isEmpty {
+            errCode = "ERR_UNKNOWN"
+        }
+    
+        return ["message": errMsg, "code": errCode]
     }
 }

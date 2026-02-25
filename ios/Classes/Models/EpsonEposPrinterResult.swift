@@ -12,12 +12,14 @@ public class EpsonEposPrinterResult: NSObject, Codable {
     var type: String
     var success: Bool
     var message: String?
+    var code: Int32?
     var content: (any Codable)?
     
-    init(type: String, success: Bool, message: String? = nil, content: (any Codable)? = nil) {
+    init(type: String, success: Bool, message: String? = nil, code: Int32? = nil, content: (any Codable)? = nil) {
         self.type = type
         self.success = success
         self.message = message
+        self.code = code
         self.content = content
     }
     
@@ -25,6 +27,7 @@ public class EpsonEposPrinterResult: NSObject, Codable {
         case type
         case success
         case message
+        case code
         case content
         case contentType
     }
@@ -34,6 +37,7 @@ public class EpsonEposPrinterResult: NSObject, Codable {
         type = try container.decode(String.self, forKey: .type)
         success = try container.decode(Bool.self, forKey: .success)
         message = try container.decodeIfPresent(String.self, forKey: .message)
+        code = try container.decodeIfPresent(Int32.self, forKey: .code)
         
         if let contentTypeString = try container.decodeIfPresent(String.self, forKey: .contentType),
            let contentType = NSClassFromString(contentTypeString) as? Codable.Type {
@@ -46,6 +50,7 @@ public class EpsonEposPrinterResult: NSObject, Codable {
         try container.encode(type, forKey: .type)
         try container.encode(success, forKey: .success)
         try container.encode(message, forKey: .message)
+        try container.encode(code, forKey: .code)
         
         if let content = content {
             let contentTypeString = String(describing: Swift.type(of: content))
