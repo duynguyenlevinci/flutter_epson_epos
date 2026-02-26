@@ -426,8 +426,6 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 commands.forEach {
                     onGenerateCommand(it)
                 }
-                mPrinter!!.addPulse(Printer.DRAWER_2PIN, Printer.PULSE_500)
-
                 try {
                     val statusInfo: PrinterStatusInfo? = mPrinter!!.status;
                     Log.d(
@@ -738,15 +736,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 }
 
                 "addKick" -> {
-                    mPrinter!!.addCommand(
-                        byteArrayOf(
-                            27.toByte(), // ESC
-                            112.toByte(),
-                            0.toByte(),
-                            100.toByte(),
-                            250.toByte()
-                        )
-                    )
+                    mPrinter!!.addPulse(Printer.DRAWER_2PIN, Printer.PULSE_500)
                 }
 
                 "addTextStyle" -> {
