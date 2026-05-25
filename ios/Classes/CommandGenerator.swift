@@ -8,14 +8,10 @@
 import Foundation
 
 public class CommandGenerator: NSObject {
-    func onGenerateCommandFor(printer: Epos2Printer?, command: Dictionary<String, Any>) {
-        guard let printer = printer else {
-            return
-        }
-        //        Log.d(logTag, "onGenerateCommand: $command")
+    func onGenerateCommandFor(printer: Epos2Printer?, command: [String: Any]) {
+        guard let printer = printer else { return }
         
         guard let commandId = command["id"] as? String, commandId.isEmpty == false else {
-            // Invalid commandId
             return
         }
         
@@ -24,30 +20,31 @@ public class CommandGenerator: NSObject {
         switch commandId {
         case "appendText":
             guard let commandValue = commandValue as? String else { return }
-            //                Log.d(logTag, "appendText: $commandValue")
-            printer.addText(commandValue);
+            printer.addText(commandValue)
             
         case "printRawData":
-            guard let commandValue = commandValue as? FlutterStandardTypedData
-            else { return }
+            guard let commandValue = commandValue as? FlutterStandardTypedData else { return }
             let data = Data(commandValue.data)
-            //                    Log.d(logTag, "printRawData")
             printer.addCommand(data)
             
         case "addImage":
-            guard let commandValue = commandValue as? String else { return }
-            guard let width = command["width"] as? Int, let height = command["height"] as? Int, let posX = command["posX"] as? Int, let posY = command["posY"] as? Int, let bitmap = convertBase64ToImage(commandValue) else { return }
-            //                    Log.d(logTag, "appendBitmap: $width x $height $posX $posY bitmap $bitmap")
+            guard let commandValue = commandValue as? String,
+                  let width = command["width"] as? Int,
+                  let height = command["height"] as? Int,
+                  let posX = command["posX"] as? Int,
+                  let posY = command["posY"] as? Int,
+                  let bitmap = convertBase64ToImage(commandValue) else { return }
             printer.add(
                 bitmap,
                 x: posX,
-                y: posY, width: width,
+                y: posY,
+                width: width,
                 height: height,
-                color:EPOS2_COLOR_1.rawValue,
-                mode:EPOS2_MODE_MONO.rawValue,
-                halftone:EPOS2_HALFTONE_DITHER.rawValue,
-                brightness:Double(EPOS2_PARAM_DEFAULT),
-                compress:EPOS2_COMPRESS_AUTO.rawValue
+                color: EPOS2_COLOR_1.rawValue,
+                mode: EPOS2_MODE_MONO.rawValue,
+                halftone: EPOS2_HALFTONE_DITHER.rawValue,
+                brightness: Double(EPOS2_PARAM_DEFAULT),
+                compress: EPOS2_COMPRESS_AUTO.rawValue
             )
             
         case "addFeedLine":
@@ -59,7 +56,7 @@ public class CommandGenerator: NSObject {
             switch commandValue {
             case "CUT_FEED":
                 printer.addCut(EPOS2_CUT_FEED.rawValue)
-            case "EPOS2_CUT_FEED":
+            case "CUT_NO_FEED":
                 printer.addCut(EPOS2_CUT_NO_FEED.rawValue)
             case "CUT_RESERVE":
                 printer.addCut(EPOS2_CUT_RESERVE.rawValue)
@@ -122,91 +119,37 @@ public class CommandGenerator: NSObject {
             printer.addTextSize(width, height: height)
             
         case "addTextStyle":
-            var reverseValue = EPOS2_PARAM_DEFAULT
-            if let reverse = command["reverse"] as? Bool {
-                if (reverse == true) {
-                    reverseValue = EPOS2_TRUE
-                } else {
-                    reverseValue = EPOS2_FALSE
-                }
-            }
-            var ulValue = EPOS2_PARAM_DEFAULT
-            if let ul = command["ul"] as? Bool {
-                if (ul) {
-                    ulValue = EPOS2_TRUE
-                } else {
-                    ulValue = EPOS2_FALSE
-                }
+            let reverseValue: Int32 = (command["reverse"] as? Bool).map { $0 ? EPOS2_TRUE : EPOS2_FALSE } ?? EPOS2_PARAM_DEFAULT
+            let ulValue: Int32 = (command["ul"] as? Bool).map { $0 ? EPOS2_TRUE : EPOS2_FALSE } ?? EPOS2_PARAM_DEFAULT
+            let emValue: Int32 = (command["em"] as? Bool).map { $0 ? EPOS2_TRUE : EPOS2_FALSE } ?? EPOS2_PARAM_DEFAULT
+            
+            let colorValue: Int32
+            switch command["color"] as? String {
+            case "COLOR_NONE": colorValue = EPOS2_COLOR_NONE.rawValue
+            case "COLOR_1":    colorValue = EPOS2_COLOR_1.rawValue
+            case "COLOR_2":    colorValue = EPOS2_COLOR_2.rawValue
+            case "COLOR_3":    colorValue = EPOS2_COLOR_3.rawValue
+            case "COLOR_4":    colorValue = EPOS2_COLOR_4.rawValue
+            default:           colorValue = EPOS2_PARAM_DEFAULT
             }
             
-            var emValue = EPOS2_PARAM_DEFAULT
-            if let em = command["em"] as? Bool {
-                if (em) {
-                    emValue = EPOS2_TRUE
-                } else {
-                    emValue = EPOS2_FALSE
-                }
-            }
-            var colorValue = EPOS2_PARAM_DEFAULT
-            if let color = command["color"] as? String {
-                switch color {
-                case "COLOR_NONE":
-                    colorValue = EPOS2_COLOR_NONE.rawValue
-                case "COLOR_1":
-                    colorValue = EPOS2_COLOR_1.rawValue
-                case "COLOR_2":
-                    colorValue = EPOS2_COLOR_2.rawValue
-                case "COLOR_3":
-                    colorValue = EPOS2_COLOR_3.rawValue
-                case "COLOR_4":
-                    colorValue = EPOS2_COLOR_4.rawValue
-                default:
-                    break
-                }
-                
-                printer.addTextStyle(reverseValue, ul: ulValue, em: emValue, color: colorValue)
-            }
+            printer.addTextStyle(reverseValue, ul: ulValue, em: emValue, color: colorValue)
             
         case "addBarcode":
-            var barcodeWidth = 2
-            if let width = command["width"] as? Int {
-                barcodeWidth = width
-            }
-            var barcodeHeight = 100
-            if let height = command["height"] as? Int {
-                barcodeHeight = height
-            }
-            var barcode = ""
-            if let code = command["barcode"] as? String {
-                barcode = code
-            }
-            var type = EPOS2_BARCODE_EAN13.rawValue
-            if let codeType = command["type"] as? Int {
-                type = Int32(codeType)
-            }
-            var textPosition = EPOS2_HRI_BELOW.rawValue
-            if let position = command["position"] as? Int {
-                textPosition = Int32(position)
-            }
-            var font = EPOS2_FONT_A.rawValue
-            var fontValue = command["font"] as? String
-            switch fontValue {
-            case "FONT_A":
-                font = EPOS2_FONT_A.rawValue
-                
-            case "FONT_B":
-                font = EPOS2_FONT_B.rawValue
-                
-            case "FONT_C":
-                font = EPOS2_FONT_C.rawValue
-                
-            case "FONT_D":
-                font = EPOS2_FONT_D.rawValue
-                
-            case "FONT_E":
-                font = EPOS2_FONT_E.rawValue
-            default:
-                break
+            let barcodeWidth = command["width"] as? Int ?? 2
+            let barcodeHeight = command["height"] as? Int ?? 100
+            let barcode = command["barcode"] as? String ?? ""
+            let type: Int32 = (command["type"] as? Int).map { Int32($0) } ?? EPOS2_BARCODE_EAN13.rawValue
+            let textPosition: Int32 = (command["position"] as? Int).map { Int32($0) } ?? EPOS2_HRI_BELOW.rawValue
+            
+            let font: Int32
+            switch command["font"] as? String {
+            case "FONT_A": font = EPOS2_FONT_A.rawValue
+            case "FONT_B": font = EPOS2_FONT_B.rawValue
+            case "FONT_C": font = EPOS2_FONT_C.rawValue
+            case "FONT_D": font = EPOS2_FONT_D.rawValue
+            case "FONT_E": font = EPOS2_FONT_E.rawValue
+            default:       font = EPOS2_FONT_A.rawValue
             }
             
             printer.addBarcode(
@@ -214,8 +157,8 @@ public class CommandGenerator: NSObject {
                 type: type,
                 hri: textPosition,
                 font: font,
-                width:barcodeWidth,
-                height:barcodeHeight
+                width: barcodeWidth,
+                height: barcodeHeight
             )
         case "addPageBegin":
             printer.addPageBegin()
