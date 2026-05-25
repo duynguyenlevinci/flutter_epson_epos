@@ -27,20 +27,18 @@ public class EpsonEposPrinterInfo: NSObject, Codable {
     }
     
     public static func printer(from deviceInfo: Epos2DeviceInfo) -> EpsonEposPrinterInfo? {
-        if (deviceInfo.deviceName != nil && deviceInfo.deviceName.isEmpty == false) {
-            var printer = EpsonEposPrinterInfo(
-                ipAddress: deviceInfo.ipAddress,
-                bdAddress: deviceInfo.bdAddress,
-                macAddress: deviceInfo.macAddress,
-                model: deviceInfo.deviceName,
-                type: String(deviceInfo.deviceType),
-                printType: String(deviceInfo.deviceType),
-                target: deviceInfo.target
-            )
-            return printer
+        guard let deviceName = deviceInfo.deviceName, deviceName.isEmpty == false else {
+            return nil
         }
-        
-        return nil
+        return EpsonEposPrinterInfo(
+            ipAddress: deviceInfo.ipAddress,
+            bdAddress: deviceInfo.bdAddress,
+            macAddress: deviceInfo.macAddress,
+            model: deviceName,
+            type: String(deviceInfo.deviceType),
+            printType: String(deviceInfo.deviceType),
+            target: deviceInfo.target
+        )
     }
 }
 

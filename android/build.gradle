@@ -2,14 +2,14 @@ group 'com.tlt.epson_epos'
 version '1.0-SNAPSHOT'
 
 buildscript {
-    ext.kotlin_version = '1.7.10'
+    ext.kotlin_version = '2.1.0'
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.3.1'
+        classpath 'com.android.tools.build:gradle:8.7.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -26,29 +26,29 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace "com.tlt.epson_epos"
-    compileSdk 34
+    compileSdk 35
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
-    defaultConfig {
-        minSdkVersion 19
-    }
 
+    defaultConfig {
+        minSdkVersion 21
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 
-      kotlinOptions {
-        jvmTarget = "17"
+    kotlinOptions {
+        jvmTarget = '17'
     }
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'androidx.annotation:annotation:1.1.0'
-    implementation 'com.google.code.gson:gson:2.8.6'
+    implementation 'androidx.annotation:annotation:1.9.1'
+    implementation 'com.google.code.gson:gson:2.11.0'
 }

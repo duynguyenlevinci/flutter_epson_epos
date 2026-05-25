@@ -1,3 +1,13 @@
+## 1.1.0
+
+- Upgrade to Flutter 3.35.7 / Dart 3.9+.
+- [Android] Bump Android Gradle Plugin to 8.7.0, Kotlin to 2.1.0, Gradle wrapper to 8.10.2.
+- [Android] Raise `compileSdk` to 35 and `minSdk` to 21, modernize plugin Kotlin code.
+- [Android] Example project migrated to declarative `plugins {}` block in `settings.gradle`.
+- [iOS] Bump deployment target to iOS 13.0, podspec version to 1.1.0.
+- [iOS] Modernize Swift code (Swift 5.0), fix `addCut`/`addTextStyle`/`addBarcode` edge cases.
+- [iOS] Always send Flutter result after `onPtrReceive` (fixed bug where result could be dropped on successful disconnect).
+
 ## 0.0.2
 
 - [Addroid] added USB Print. Special thanks @brasizza

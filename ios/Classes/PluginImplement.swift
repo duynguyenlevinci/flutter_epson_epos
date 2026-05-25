@@ -33,13 +33,13 @@ class PluginImplement: NSObject {
     }
     
     public func onDiscovery(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        if let args = call.arguments as? [String: Any] { // Cast to the expected type
+        if let args = call.arguments as? [String: Any] {
             print("Discovery args: \(args)")
-                let type = args["type"] as? Int32 ?? EPOS2_PORTTYPE_ALL.rawValue
-                filterOption.portType = type
-            } else {
-                filterOption.portType = EPOS2_PORTTYPE_ALL.rawValue
-            }
+            let type = args["type"] as? Int32 ?? EPOS2_PORTTYPE_ALL.rawValue
+            filterOption.portType = type
+        } else {
+            filterOption.portType = EPOS2_PORTTYPE_ALL.rawValue
+        }
         let operation = OperationQueue()
         operation.addOperation { [weak self] in
             self?._onDiscovery(call, result: result)
@@ -50,7 +50,7 @@ class PluginImplement: NSObject {
         self.result = result
         let response = Epos2Discovery.start(filterOption, delegate: self)
         print("Epos2Discovery.start response: \(response) | printers count: \(printers.count)")
-        let resp = EpsonEposPrinterResult.init(type: PluginMethods.onDiscovery.rawValue, success: false)
+        let resp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: false)
         if response != EPOS2_SUCCESS.rawValue {
             resp.message = MessageHelper.errorEpos(response, method: "start")
             return result(try? resp.toJSONString())
@@ -61,69 +61,55 @@ class PluginImplement: NSObject {
             .first()
             .receive(on: DispatchQueue.global())
             .sink(receiveValue: { [weak self] _ in
-                // Stop discover
-                Epos2Discovery.stop()
+                _ = Epos2Discovery.stop()
                 
                 guard let self = self, let result = self.result else {
                     return
                 }
                 
-                // return the result
-                var resp = EpsonEposPrinterResult.init(type: PluginMethods.onDiscovery.rawValue, success: true)
-                resp.content = self.printers
+                let successResp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: true)
+                successResp.content = self.printers
                 do {
-                    let data = try resp.toJSONString()
+                    let data = try successResp.toJSONString()
                     result(data)
                 } catch let error {
-                    resp = EpsonEposPrinterResult.init(type: PluginMethods.onDiscovery.rawValue, success: true)
-                    resp.success = false
-                    resp.message = error.localizedDescription
-                    result(try? resp.toJSONString())
+                    let errorResp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: false)
+                    errorResp.message = error.localizedDescription
+                    result(try? errorResp.toJSONString())
                 }
             })
             .store(in: &cancellable)
     }
     
     public func connectDevice() {
-        Epos2Discovery.stop()
+        _ = Epos2Discovery.stop()
         
         let btConnection = Epos2BluetoothConnection()
-        let BDAddress = NSMutableString()
-        let result = btConnection?.connectDevice(BDAddress)
-        if result == EPOS2_SUCCESS.rawValue {
-//            delegate?.discoveryView(self, onSelectPrinterTarget: BDAddress as String)
-//            delegate = nil
-        }
-        else {
-            Epos2Discovery.start(filterOption, delegate:self)
-//            printerView.reloadData()
+        let bdAddress = NSMutableString()
+        let result = btConnection?.connectDevice(bdAddress)
+        if result != EPOS2_SUCCESS.rawValue {
+            _ = Epos2Discovery.start(filterOption, delegate: self)
         }
     }
     
     public func restartDiscovery(_ sender: AnyObject) {
-        var result = EPOS2_SUCCESS.rawValue;
+        var result = EPOS2_SUCCESS.rawValue
         
         while true {
             result = Epos2Discovery.stop()
             
             if result != EPOS2_ERR_PROCESSING.rawValue {
-                if (result == EPOS2_SUCCESS.rawValue) {
-                    break;
-                }
-                else {
-//                    MessageView.showErrorEpos(result, method:"stop")
-                    return;
+                if result == EPOS2_SUCCESS.rawValue {
+                    break
+                } else {
+                    return
                 }
             }
         }
         
         printers.removeAll()
-//        printerView.reloadData()
 
-        result = Epos2Discovery.start(filterOption, delegate:self)
-        if result != EPOS2_SUCCESS.rawValue {
-//            MessageView.showErrorEpos(result, method:"start")
-        }
+        _ = Epos2Discovery.start(filterOption, delegate: self)
     }
 }
 
@@ -161,15 +147,12 @@ private extension PluginImplement {
 
 extension PluginImplement: Epos2DiscoveryDelegate {
     func onDiscovery(_ deviceInfo: Epos2DeviceInfo!) {
+        guard let deviceInfo = deviceInfo else { return }
         print("Discovered device: \(deviceInfo.deviceName ?? "Unknown") at \(deviceInfo.ipAddress ?? "No IP")")
         guard let printer = EpsonEposPrinterInfo.printer(from: deviceInfo) else {
             return
         }
-        let printerIndex = printers.firstIndex(where: { e in
-            e.ipAddress == deviceInfo.ipAddress
-        })
-        
-        if let index = printerIndex, index > -1 {
+        if let index = printers.firstIndex(where: { $0.ipAddress == deviceInfo.ipAddress }) {
             printers[index] = printer
         } else {
             printers.append(printer)
@@ -180,9 +163,13 @@ extension PluginImplement: Epos2DiscoveryDelegate {
 extension PluginImplement: Epos2PtrReceiveDelegate {
     public func onPrint(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         self.result = result
-        self.printType = "" // Reset or set based on call if needed
+        if let args = call.arguments as? [String: Any], let type = args["type"] as? String {
+            self.printType = type
+        } else {
+            self.printType = ""
+        }
         
-        guard initializePrinterObject() == true else {
+        guard initializePrinterObject() else {
             let resp = EpsonEposPrinterResult(type: call.method, success: false)
             resp.message = NSLocalizedString("error_not_support_printer", comment: "")
             result(try? resp.toJSONString())
@@ -195,24 +182,25 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
     }
     
     func printData(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? Dictionary<String, Any>, let target: String = args["target"] as? String, target.isEmpty == false, let series = args["series"] as? String else {
+        guard let args = call.arguments as? [String: Any],
+              let target = args["target"] as? String,
+              target.isEmpty == false,
+              let series = args["series"] as? String else {
             returnFailResultWith(method: call.method, message: NSLocalizedString("error_missing_print_data", comment: ""))
             return
         }
         
-        guard let commands: Array<Dictionary<String, Any>> =
-                args["commands"] as? Array<Dictionary<String, Any>> else {
+        guard let commands = args["commands"] as? [[String: Any]] else {
             returnFailResultWith(method: call.method, message: NSLocalizedString("error_missing_print_data", comment: ""))
             return
         }
         
-        guard connectPrinter(with: target, method: call.method) == true else {
+        guard connectPrinter(with: target, method: call.method) else {
             printer?.clearCommandBuffer()
             return
         }
         
         guard let printer = printer else { return }
-        var status = EPOS2_SUCCESS.rawValue
         
         let generator = CommandGenerator()
         commands.forEach { command in
@@ -229,14 +217,11 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
                 resp.content = "ERR_SEND_DATA_\(status)"
                 
                 printer.clearCommandBuffer()
-                printer.disconnect()
-                result(try resp.toJSONString());
+                _ = printer.disconnect()
+                result(try resp.toJSONString())
             } else {
                 // Wait for onPtrReceive
                 print("Sent data to printer \(target) \(series)")
-                // resp.success = true
-                // resp.message = "Printed \(target) \(series)"
-                // result(try resp.toJSONString());
             }
         } catch let error {
             resp.message = error.localizedDescription
@@ -248,26 +233,18 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
     @discardableResult
     func initializePrinterObject() -> Bool {
         printer = Epos2Printer(printerSeries: valuePrinterSeries.rawValue, lang: valuePrinterModel.rawValue)
-        
-        if printer == nil {
-            return false
-        }
-        printer?.setReceiveEventDelegate(self)
-        
+        guard let printer = printer else { return false }
+        printer.setReceiveEventDelegate(self)
         return true
     }
     
     func connectPrinter(with target: String, method: String) -> Bool {
-        var result: Int32 = EPOS2_SUCCESS.rawValue
-        
-        if printer == nil {
-            return false
-        }
+        guard let printer = printer else { return false }
         
         // Note: This API must be used from background thread only
-        result = printer!.connect(target, timeout:Int(EPOS2_PARAM_DEFAULT))
+        let result = printer.connect(target, timeout: Int(EPOS2_PARAM_DEFAULT))
         if result != EPOS2_SUCCESS.rawValue {
-            let message = MessageHelper.errorEpos(result, method:"connect")
+            let message = MessageHelper.errorEpos(result, method: "connect")
             returnFailResultWith(method: method, message: message)
             return false
         }
@@ -277,71 +254,51 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
     
     @discardableResult
     func disconnectPrinter() -> Bool {
-        var result: Int32 = EPOS2_SUCCESS.rawValue
+        guard let printer = printer else { return false }
         
-        if printer == nil {
-            return false
-        }
+        // Try to end any in-flight transaction, then disconnect best-effort.
+        _ = printer.endTransaction()
+        printer.setReceiveEventDelegate(nil)
         
         // Note: This API must be used from background thread only
-        result = printer!.disconnect()
+        let result = printer.disconnect()
+        printer.clearCommandBuffer()
+        
         if result != EPOS2_SUCCESS.rawValue {
-            DispatchQueue.main.async(execute: { [weak self] in
-                let message = MessageHelper.errorEpos(result, method:"disconnect")
-                self?.returnFailResultWith(method: PluginMethods.onPrint.rawValue, message: message)
-            })
+            let message = MessageHelper.errorEpos(result, method: "disconnect")
+            print("disconnectPrinter error: \(message)")
             return false
         }
-
-        printer!.clearCommandBuffer()
-        
         return true
     }
     
     // MARK: - Epos2PtrReceiveDelegate
     func onPtrReceive(_ printerObj: Epos2Printer!, code: Int32, status: Epos2PrinterStatusInfo!, printJobId: String!) {
-        
         let queue = OperationQueue()
-        queue.addOperation({ [weak self] in
-            guard let self = self else {
-                return
-            }
-            if self.disconnectPrinter() == false {
-                self.handlePrinterReceive(code: code, status: status)
-            }
-//            dispPrinterWarnings(status)
-        })
+        queue.addOperation { [weak self] in
+            guard let self = self else { return }
+            self.disconnectPrinter()
+            self.handlePrinterReceive(code: code, status: status)
+        }
     }
     
     func dispPrinterWarnings(_ status: Epos2PrinterStatusInfo?) {
-        if status == nil {
-            return
+        guard let status = status else { return }
+        let warningMsg = NSMutableString()
+        
+        if status.paper == EPOS2_PAPER_NEAR_END.rawValue {
+            warningMsg.append(NSLocalizedString("warn_receipt_near_end", comment: ""))
         }
-        
-//        OperationQueue.main.addOperation({ [self] in
-//            textWarnings.text = ""
-//        })
-        let wanringMsg = NSMutableString()
-        
-        if status!.paper == EPOS2_PAPER_NEAR_END.rawValue {
-            wanringMsg.append(NSLocalizedString("warn_receipt_near_end", comment:""))
+        if status.batteryLevel == EPOS2_BATTERY_LEVEL_1.rawValue {
+            warningMsg.append(NSLocalizedString("warn_battery_near_end", comment: ""))
         }
-        
-        if status!.batteryLevel == EPOS2_BATTERY_LEVEL_1.rawValue {
-            wanringMsg.append(NSLocalizedString("warn_battery_near_end", comment:""))
+        if status.paperTakenSensor == EPOS2_REMOVAL_DETECT_PAPER.rawValue {
+            warningMsg.append(NSLocalizedString("warn_detect_paper", comment: ""))
         }
-        
-        if status!.paperTakenSensor == EPOS2_REMOVAL_DETECT_PAPER.rawValue {
-            wanringMsg.append(NSLocalizedString("warn_detect_paper", comment:""))
+        if status.paperTakenSensor == EPOS2_REMOVAL_DETECT_UNKNOWN.rawValue {
+            warningMsg.append(NSLocalizedString("warn_detect_unknown", comment: ""))
         }
-        
-        if status!.paperTakenSensor == EPOS2_REMOVAL_DETECT_UNKNOWN.rawValue {
-            wanringMsg.append(NSLocalizedString("warn_detect_unknown", comment:""))
-        }
-        
-//        OperationQueue.main.addOperation({ [self] in
-//            textWarnings.text = wanringMsg as String
-//        })
+        print("Printer warnings: \(warningMsg)")
     }
 
     func makeErrorMessage(_ status: Epos2PrinterStatusInfo?) -> [String: String] {
@@ -350,76 +307,76 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         guard let status = status else {
             return ["message": "", "code": "ERR_UNKNOWN"]
         }
-    
+        
         if status.online == EPOS2_FALSE {
-            errMsg += NSLocalizedString("err_offline", comment:"")
+            errMsg += NSLocalizedString("err_offline", comment: "")
             errCode = "ERR_OFFLINE"
         }
         if status.connection == EPOS2_FALSE {
-            errMsg += NSLocalizedString("err_no_response", comment:"")
+            errMsg += NSLocalizedString("err_no_response", comment: "")
             errCode = "ERR_NO_RESPONSE"
         }
         if status.coverOpen == EPOS2_TRUE {
-            errMsg += NSLocalizedString("err_cover_open", comment:"")
+            errMsg += NSLocalizedString("err_cover_open", comment: "")
             errCode = "ERR_COVER_OPEN"
         }
         if status.paper == EPOS2_PAPER_EMPTY.rawValue {
-            errMsg += NSLocalizedString("err_receipt_end", comment:"")
+            errMsg += NSLocalizedString("err_receipt_end", comment: "")
             errCode = "ERR_RECEIPT_END"
         }
         if status.paperFeed == EPOS2_TRUE || status.panelSwitch == EPOS2_SWITCH_ON.rawValue {
-            errMsg += NSLocalizedString("err_paper_feed", comment:"")
+            errMsg += NSLocalizedString("err_paper_feed", comment: "")
             errCode = "ERR_PAPER_FEED"
         }
         if status.errorStatus == EPOS2_MECHANICAL_ERR.rawValue || status.errorStatus == EPOS2_AUTOCUTTER_ERR.rawValue {
-            errMsg += NSLocalizedString("err_autocutter", comment:"")
-            errMsg += NSLocalizedString("err_need_recover", comment:"")
+            errMsg += NSLocalizedString("err_autocutter", comment: "")
+            errMsg += NSLocalizedString("err_need_recover", comment: "")
             errCode = "ERR_AUTOCUTTER"
         }
         if status.errorStatus == EPOS2_UNRECOVER_ERR.rawValue {
-            errMsg += NSLocalizedString("err_unrecover", comment:"")
+            errMsg += NSLocalizedString("err_unrecover", comment: "")
             errCode = "ERR_UNRECOVER"
         }
-    
+        
         if status.errorStatus == EPOS2_AUTORECOVER_ERR.rawValue {
-            if status.autoRecoverError == EPOS2_HEAD_OVERHEAT.rawValue {
-                errMsg += NSLocalizedString("err_head", comment:"")
-                errMsg += NSLocalizedString("err_overheat", comment:"")
+            switch status.autoRecoverError {
+            case EPOS2_HEAD_OVERHEAT.rawValue:
+                errMsg += NSLocalizedString("err_head", comment: "")
+                errMsg += NSLocalizedString("err_overheat", comment: "")
                 errCode = "ERR_OVERHEAT_HEAD"
-            }
-            if status.autoRecoverError == EPOS2_MOTOR_OVERHEAT.rawValue {
-                errMsg += NSLocalizedString("err_motor", comment:"")
-                errMsg += NSLocalizedString("err_overheat", comment:"")
+            case EPOS2_MOTOR_OVERHEAT.rawValue:
+                errMsg += NSLocalizedString("err_motor", comment: "")
+                errMsg += NSLocalizedString("err_overheat", comment: "")
                 errCode = "ERR_OVERHEAT_MOTOR"
-            }
-            if status.autoRecoverError == EPOS2_BATTERY_OVERHEAT.rawValue {
-                errMsg += NSLocalizedString("err_battery", comment:"")
-                errMsg += NSLocalizedString("err_overheat", comment:"")
+            case EPOS2_BATTERY_OVERHEAT.rawValue:
+                errMsg += NSLocalizedString("err_battery", comment: "")
+                errMsg += NSLocalizedString("err_overheat", comment: "")
                 errCode = "ERR_OVERHEAT_BATTERY"
-            }
-            if status.autoRecoverError == EPOS2_WRONG_PAPER.rawValue {
-                errMsg += NSLocalizedString("err_wrong_paper", comment:"")
+            case EPOS2_WRONG_PAPER.rawValue:
+                errMsg += NSLocalizedString("err_wrong_paper", comment: "")
                 errCode = "ERR_WRONG_PAPER"
+            default:
+                break
             }
         }
         if status.batteryLevel == EPOS2_BATTERY_LEVEL_0.rawValue {
-            errMsg += NSLocalizedString("err_battery_real_end", comment:"")
+            errMsg += NSLocalizedString("err_battery_real_end", comment: "")
             errCode = "ERR_BATTERY_END"
         }
-        if (status.removalWaiting == EPOS2_REMOVAL_WAIT_PAPER.rawValue) {
-            errMsg += NSLocalizedString("err_wait_removal", comment:"")
+        if status.removalWaiting == EPOS2_REMOVAL_WAIT_PAPER.rawValue {
+            errMsg += NSLocalizedString("err_wait_removal", comment: "")
             errCode = "ERR_WAIT_REMOVAL"
         }
-        if (status.unrecoverError == EPOS2_HIGH_VOLTAGE_ERR.rawValue ||
-            status.unrecoverError == EPOS2_LOW_VOLTAGE_ERR.rawValue) {
-            errMsg += NSLocalizedString("err_voltage", comment:"");
+        if status.unrecoverError == EPOS2_HIGH_VOLTAGE_ERR.rawValue ||
+            status.unrecoverError == EPOS2_LOW_VOLTAGE_ERR.rawValue {
+            errMsg += NSLocalizedString("err_voltage", comment: "")
             errCode = "ERR_VOLTAGE"
         }
-    
+        
         if errMsg.isEmpty {
             errCode = "ERR_UNKNOWN"
         }
-    
+        
         return ["message": errMsg, "code": errCode]
     }
 }
