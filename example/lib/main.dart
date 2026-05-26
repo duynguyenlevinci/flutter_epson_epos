@@ -337,7 +337,8 @@ class _MyAppState extends State<MyApp> {
 
     try {
       final response = await EpsonEPOS.onPrint(printer, commands);
-      logger.d(response.toString());
+      logger.d('Print image response: ${response.toString()}');
+    
     } catch (e) {
       logger.e('Print image error: $e');
     }
@@ -477,6 +478,7 @@ class _MyAppState extends State<MyApp> {
     );
     commands.add(command.addCut(EpsonEPOSCut.CUT_FEED));
     final response = await EpsonEPOS.onPrint(printer, commands);
+  
     logger.d(response.toString());
   }
 

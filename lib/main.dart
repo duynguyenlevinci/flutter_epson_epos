@@ -56,7 +56,18 @@ class EpsonEPOS {
     return [];
   }
 
-  static Future<dynamic> onPrint(
+  /// Send the [commands] to the [printer] and wait for the printer's response.
+  ///
+  /// Returns an [EpsonPrinterResponse] with:
+  ///  - [EpsonPrinterResponse.statusCode] : an `int` defined in [EpsonStatusCode]
+  ///    (e.g. `EpsonStatusCode.success`, `EpsonStatusCode.errCoverOpen`,
+  ///    `EpsonStatusCode.errReceiptEnd`, ...).
+  ///  - [EpsonPrinterResponse.message]    : a human-readable description of the
+  ///    error / success.
+  ///
+  /// On platforms that don't return a parseable payload, a response with
+  /// `statusCode = EpsonStatusCode.unknown` is returned.
+  static Future<EpsonPrinterResponse> onPrint(
       EpsonPrinterModel printer, List<Map<String, dynamic>> commands) async {
     final Map<String, dynamic> params = {
       "type": printer.type,
@@ -64,7 +75,29 @@ class EpsonEPOS {
       "commands": commands,
       "target": printer.target
     };
-    return await _channel.invokeMethod('onPrint', params);
+    final dynamic raw = await _channel.invokeMethod('onPrint', params);
+    return _parseResponse(raw, type: 'onPrint');
+  }
+
+  /// Parse the platform channel result into a typed [EpsonPrinterResponse].
+  /// Native side returns a JSON string; older callers may also receive a Map.
+  static EpsonPrinterResponse _parseResponse(dynamic raw, {required String type}) {
+    try {
+      if (raw is String && raw.isNotEmpty) {
+        return EpsonPrinterResponse.fromRawJson(raw);
+      }
+      if (raw is Map) {
+        return EpsonPrinterResponse.fromJson(Map<String, dynamic>.from(raw));
+      }
+    } catch (_) {
+      // fall through to unknown response
+    }
+    return EpsonPrinterResponse(
+      type: type,
+      success: false,
+      statusCode: EpsonStatusCode.unknown,
+      message: 'Invalid response from native plugin',
+    );
   }
 
   static Future<dynamic> getPrinterSetting(EpsonPrinterModel printer) async {

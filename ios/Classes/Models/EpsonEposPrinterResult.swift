@@ -11,13 +11,22 @@ public class EpsonEposPrinterResult: NSObject, Codable {
     /// Type of the method
     var type: String
     var success: Bool
+    /// Unified status code. See `EpsonStatusCode` for the full list.
+    var statusCode: Int
     var message: String?
+    /// Raw Epson SDK code (kept for backward compatibility).
     var code: Int32?
     var content: (any Codable)?
     
-    init(type: String, success: Bool, message: String? = nil, code: Int32? = nil, content: (any Codable)? = nil) {
+    init(type: String,
+         success: Bool,
+         statusCode: Int = EpsonStatusCode.unknown,
+         message: String? = nil,
+         code: Int32? = nil,
+         content: (any Codable)? = nil) {
         self.type = type
         self.success = success
+        self.statusCode = statusCode
         self.message = message
         self.code = code
         self.content = content
@@ -26,6 +35,7 @@ public class EpsonEposPrinterResult: NSObject, Codable {
     enum CodingKeys: String, CodingKey {
         case type
         case success
+        case statusCode = "status_code"
         case message
         case code
         case content
@@ -36,6 +46,7 @@ public class EpsonEposPrinterResult: NSObject, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(String.self, forKey: .type)
         success = try container.decode(Bool.self, forKey: .success)
+        statusCode = try container.decodeIfPresent(Int.self, forKey: .statusCode) ?? EpsonStatusCode.unknown
         message = try container.decodeIfPresent(String.self, forKey: .message)
         code = try container.decodeIfPresent(Int32.self, forKey: .code)
         
@@ -49,6 +60,7 @@ public class EpsonEposPrinterResult: NSObject, Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
         try container.encode(success, forKey: .success)
+        try container.encode(statusCode, forKey: .statusCode)
         try container.encode(message, forKey: .message)
         try container.encode(code, forKey: .code)
         

@@ -113,30 +113,85 @@ class EPSONSeries {
 }
 
 ///
+/// Unified status codes returned by the native plugin.
+/// Keep in sync with EpsonStatusCode in EpsonEposPlugin.kt.
+///
+class EpsonStatusCode {
+  EpsonStatusCode._();
+
+  static const int success = 0;
+  static const int printing = 1;
+
+  // Connection (100-199)
+  static const int errConnect = 100;
+  static const int errDisconnect = 101;
+  static const int errOffline = 102;
+  static const int errNoResponse = 103;
+  static const int errTimeout = 104;
+  static const int errPort = 105;
+  static const int errNotFound = 106;
+
+  // Paper (200-299)
+  static const int errReceiptEnd = 200;
+  static const int errPaperFeed = 201;
+  static const int errWrongPaper = 202;
+  static const int errEmpty = 203;
+
+  // Cover / cutter (300-399)
+  static const int errCoverOpen = 300;
+  static const int errAutocutter = 301;
+  static const int errCutter = 302;
+  static const int errMechanical = 303;
+
+  // Hardware health (400-499)
+  static const int errOverheatHead = 400;
+  static const int errOverheatMotor = 401;
+  static const int errOverheatBattery = 402;
+  static const int errBatteryEnd = 403;
+  static const int errUnrecover = 404;
+  static const int errAutorecover = 405;
+
+  // System (500-599)
+  static const int errFailure = 500;
+  static const int errSystem = 501;
+  static const int errParam = 502;
+  static const int errProcessing = 503;
+
+  static const int unknown = 999;
+}
+
+///
 /// Response
 ///
 class EpsonPrinterResponse {
   EpsonPrinterResponse({
     required this.type,
     required this.success,
+    this.statusCode = EpsonStatusCode.unknown,
     this.message,
     this.content,
   });
 
   String type;
   bool success;
+  int statusCode;
   String? message;
   dynamic content;
 
+  /// `true` when the printer call completed without any error.
+  bool get isSuccess => statusCode == EpsonStatusCode.success;
+
   EpsonPrinterResponse copyWith({
-    required String type,
-    required bool success,
+    String? type,
+    bool? success,
+    int? statusCode,
     String? message,
     dynamic content,
   }) =>
       EpsonPrinterResponse(
-        type: type,
-        success: success,
+        type: type ?? this.type,
+        success: success ?? this.success,
+        statusCode: statusCode ?? this.statusCode,
         message: message ?? this.message,
         content: content ?? this.content,
       );
@@ -148,21 +203,25 @@ class EpsonPrinterResponse {
 
   factory EpsonPrinterResponse.fromJson(Map<String, dynamic> json) =>
       EpsonPrinterResponse(
-        type: json["type"] == null ? null : json["type"],
-        success: json["success"] == null ? null : json["success"],
-        message: json["message"] == null ? null : json["message"],
-        content: json["content"] == null ? null : json["content"],
+        type: json["type"] ?? '',
+        success: json["success"] ?? false,
+        statusCode: json["status_code"] is int
+            ? json["status_code"] as int
+            : EpsonStatusCode.unknown,
+        message: json["message"],
+        content: json["content"],
       );
 
   Map<String, dynamic> toJson() => {
         "type": type,
         "success": success,
-        "message": message == null ? null : message,
-        "content": content == null ? null : content,
+        "status_code": statusCode,
+        "message": message,
+        "content": content,
       };
 
   @override
   String toString() {
-    return 'EpsonPrinterResponse(type: $type, success: $success, message: $message, content: $content)';
+    return 'EpsonPrinterResponse(type: $type, success: $success, statusCode: $statusCode, message: $message, content: $content)';
   }
 }
