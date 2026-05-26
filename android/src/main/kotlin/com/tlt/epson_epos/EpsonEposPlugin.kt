@@ -22,6 +22,7 @@ import com.epson.epos2.printer.PrinterSettingListener
 import com.epson.epos2.printer.PrinterStatusInfo
 import com.epson.epos2.printer.ReceiveListener
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -52,9 +53,57 @@ data class EpsonEposPrinterResult(
     var type: String,
     var success: Boolean,
     var message: String? = null,
+    @SerializedName("status_code")
+    var statusCode: Int = EpsonStatusCode.UNKNOWN,
     var code: Int? = null,
     var content: Any? = null
 ) : JSONConvertable
+
+/**
+ * Unified status codes returned to Flutter side.
+ * Keep in sync with the Dart-side constants in lib/const.dart.
+ */
+object EpsonStatusCode {
+    const val SUCCESS = 0
+    const val PRINTING = 1
+
+    // Connection (100-199)
+    const val ERR_CONNECT = 100
+    const val ERR_DISCONNECT = 101
+    const val ERR_OFFLINE = 102
+    const val ERR_NO_RESPONSE = 103
+    const val ERR_TIMEOUT = 104
+    const val ERR_PORT = 105
+    const val ERR_NOT_FOUND = 106
+
+    // Paper (200-299)
+    const val ERR_RECEIPT_END = 200
+    const val ERR_PAPER_FEED = 201
+    const val ERR_WRONG_PAPER = 202
+    const val ERR_EMPTY = 203
+
+    // Cover / cutter (300-399)
+    const val ERR_COVER_OPEN = 300
+    const val ERR_AUTOCUTTER = 301
+    const val ERR_CUTTER = 302
+    const val ERR_MECHANICAL = 303
+
+    // Hardware health (400-499)
+    const val ERR_OVERHEAT_HEAD = 400
+    const val ERR_OVERHEAT_MOTOR = 401
+    const val ERR_OVERHEAT_BATTERY = 402
+    const val ERR_BATTERY_END = 403
+    const val ERR_UNRECOVER = 404
+    const val ERR_AUTORECOVER = 405
+
+    // System (500-599)
+    const val ERR_FAILURE = 500
+    const val ERR_SYSTEM = 501
+    const val ERR_PARAM = 502
+    const val ERR_PROCESSING = 503
+
+    const val UNKNOWN = 999
+}
 
 /** EpsonEposPlugin */
 class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
@@ -123,25 +172,32 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             // Always prioritize checking printer status for specific hardware errors
             // (out of paper, cover open, etc.)
             val errorFromStatus = if (p2 != null) printerStatusError(p2) else null
-            val hasSpecificError = errorFromStatus != null && errorFromStatus["code"] != "ERR_UNKNOWN"
+            val hasSpecificError =
+                errorFromStatus != null && errorFromStatus.statusCode != EpsonStatusCode.UNKNOWN
 
             if (p1 == 0 && !hasSpecificError) {
                 resp.success = true
+                resp.statusCode = EpsonStatusCode.SUCCESS
                 resp.message = "Success"
             } else {
                 resp.success = false
 
                 if (hasSpecificError) {
-                    resp.message = errorFromStatus!!["message"] as String
-                    resp.content = errorFromStatus["code"] as String
+                    resp.statusCode = errorFromStatus!!.statusCode
+                    resp.message = errorFromStatus.message
+                    resp.content = errorFromStatus.legacyCode
                 } else {
                     val callbackErrorKey = getCallbackErrorCode(p1)
+                    resp.statusCode = callbackCodeToStatus(p1)
                     resp.message = getErrorMessage(callbackErrorKey.lowercase())
                     resp.content = callbackErrorKey
                 }
             }
 
-            Log.d(logTag, "onPtrReceive: Code $p1, Status $p2, Message ${resp.message}")
+            Log.d(
+                logTag,
+                "onPtrReceive: Code $p1, status_code ${resp.statusCode}, Status $p2, Message ${resp.message}"
+            )
             result.success(resp.toJSON())
             disconnectPrinter()
         }
@@ -247,6 +303,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             Discovery.start(context, filter, mDiscoveryListener)
             Handler(Looper.getMainLooper()).postDelayed({
                 resp.success = true
+                resp.statusCode = EpsonStatusCode.SUCCESS
                 resp.message = "Successfully!"
                 resp.content = printers
                 result.success(resp.toJSON())
@@ -255,6 +312,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         } catch (e: Exception) {
             Log.e(logTag, "onDiscoveryPrinter: start not working for ${call.method}", e)
             resp.success = false
+            resp.statusCode = EpsonStatusCode.ERR_FAILURE
             resp.message = "Error while search printer"
             result.success(resp.toJSON())
         }
@@ -281,8 +339,10 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             if (!connectPrinter(target, series)) {
                 val error = printerStatusError()
                 resp.success = false
-                resp.message = error["message"] as String
-                resp.content = error["code"] as String
+                resp.statusCode = if (error.statusCode != EpsonStatusCode.UNKNOWN)
+                    error.statusCode else EpsonStatusCode.ERR_CONNECT
+                resp.message = error.message
+                resp.content = error.legacyCode
                 result.success(resp.toJSON())
                 mPrinter?.clearCommandBuffer()
             } else {
@@ -291,7 +351,8 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         } catch (e: Exception) {
             Log.e(logTag, "getPrinterSetting error", e)
             resp.success = false
-            resp.message = "Print error"
+            resp.statusCode = EpsonStatusCode.ERR_FAILURE
+            resp.message = e.localizedMessage ?: "Print error"
             result.success(resp.toJSON())
         }
     }
@@ -312,8 +373,10 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             if (!connectPrinter(target, series)) {
                 val error = printerStatusError()
                 resp.success = false
-                resp.message = error["message"] as String
-                resp.content = error["code"] as String
+                resp.statusCode = if (error.statusCode != EpsonStatusCode.UNKNOWN)
+                    error.statusCode else EpsonStatusCode.ERR_CONNECT
+                resp.message = error.message
+                resp.content = error.legacyCode
                 result.success(resp.toJSON())
                 mPrinter?.clearCommandBuffer()
             } else {
@@ -330,14 +393,16 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 } catch (ex: Exception) {
                     Log.e(logTag, "setPrinterSetting error", ex)
                     resp.success = false
-                    resp.message = "Print error"
+                    resp.statusCode = EpsonStatusCode.ERR_FAILURE
+                    resp.message = ex.localizedMessage ?: "Print error"
                     result.success(resp.toJSON())
                 }
             }
         } catch (e: Exception) {
             Log.e(logTag, "setPrinterSetting outer error", e)
             resp.success = false
-            resp.message = "Print error"
+            resp.statusCode = EpsonStatusCode.ERR_FAILURE
+            resp.message = e.localizedMessage ?: "Print error"
             result.success(resp.toJSON())
         }
     }
@@ -357,10 +422,16 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         val resp = EpsonEposPrinterResult("onPrint${type}", false)
         try {
             if (!connectPrinter(target, series)) {
+                // Try to read printer status to provide a meaningful error
+                val statusError = printerStatusError()
                 resp.success = false
-                resp.message = "Can not connect to the printer."
-                result.success(resp.toJSON())
+                resp.statusCode = if (statusError.statusCode != EpsonStatusCode.UNKNOWN)
+                    statusError.statusCode else EpsonStatusCode.ERR_CONNECT
+                resp.message = if (statusError.statusCode != EpsonStatusCode.UNKNOWN)
+                    statusError.message else "Can not connect to the printer."
+                resp.content = statusError.legacyCode
                 Log.e(logTag, "Cannot ConnectPrinter $resp")
+                result.success(resp.toJSON())
                 mPrinter?.clearCommandBuffer()
             } else {
                 commands.forEach { onGenerateCommand(it) }
@@ -383,15 +454,25 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                         disconnectPrinter()
                     }
                     Log.e(logTag, "sendData Error ${ex.errorStatus}", ex)
+                    val statusError = printerStatusError()
                     resp.success = false
-                    resp.message = "Send data error: ${ex.errorStatus}"
+                    if (statusError.statusCode != EpsonStatusCode.UNKNOWN) {
+                        resp.statusCode = statusError.statusCode
+                        resp.message = statusError.message
+                        resp.content = statusError.legacyCode
+                    } else {
+                        resp.statusCode = epos2ExceptionToStatus(ex.errorStatus)
+                        resp.message = "Send data error: ${ex.errorStatus}"
+                    }
+                    resp.code = ex.errorStatus
                     result.success(resp.toJSON())
                 }
             }
         } catch (e: Exception) {
             Log.e(logTag, "onPrint outer error", e)
             resp.success = false
-            resp.message = "Print error"
+            resp.statusCode = EpsonStatusCode.ERR_FAILURE
+            resp.message = e.localizedMessage ?: "Print error"
             result.success(resp.toJSON())
         }
     }
@@ -698,50 +779,69 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         return BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
     }
 
-    private fun printerStatusError(printerStatus: PrinterStatusInfo? = null): Map<String, String> {
-        val result = mutableMapOf<String, String>()
+    /**
+     * Translates a PrinterStatusInfo into a unified (status_code, message, legacyCode) tuple.
+     * legacyCode is kept only for backward compatibility with previous response payload.
+     */
+    private data class PrinterStatusError(
+        val statusCode: Int,
+        val message: String,
+        val legacyCode: String
+    )
+
+    private fun printerStatusError(printerStatus: PrinterStatusInfo? = null): PrinterStatusError {
         if (mPrinter == null && printerStatus == null) {
-            result["message"] = getErrorMessage("")
-            result["code"] = "ERR_UNKNOWN"
-            return result
+            return PrinterStatusError(
+                EpsonStatusCode.UNKNOWN,
+                getErrorMessage(""),
+                "ERR_UNKNOWN"
+            )
         }
         var errorMes = ""
         var errorCode = ""
+        var statusCode: Int = EpsonStatusCode.UNKNOWN
         val status: PrinterStatusInfo? = printerStatus ?: mPrinter?.status
 
         if (status?.online == Printer.FALSE) {
             errorMes = getErrorMessage("err_offline")
             errorCode = "ERR_OFFLINE"
+            statusCode = EpsonStatusCode.ERR_OFFLINE
         }
 
         if (status?.connection == Printer.FALSE) {
             errorMes = getErrorMessage("err_no_response")
             errorCode = "ERR_NO_RESPONSE"
+            statusCode = EpsonStatusCode.ERR_NO_RESPONSE
         }
 
         if (status?.coverOpen == Printer.TRUE) {
             errorMes = getErrorMessage("err_cover_open")
             errorCode = "ERR_COVER_OPEN"
+            statusCode = EpsonStatusCode.ERR_COVER_OPEN
         }
 
         if (status?.paper == Printer.PAPER_EMPTY) {
             errorMes = getErrorMessage("err_receipt_end")
             errorCode = "ERR_RECEIPT_END"
+            statusCode = EpsonStatusCode.ERR_RECEIPT_END
         }
 
         if (status?.paperFeed == Printer.TRUE || status?.panelSwitch == Printer.SWITCH_ON) {
             errorMes = getErrorMessage("err_paper_feed")
             errorCode = "ERR_PAPER_FEED"
+            statusCode = EpsonStatusCode.ERR_PAPER_FEED
         }
 
         if (status?.errorStatus == Printer.UNRECOVER_ERR) {
             errorMes = getErrorMessage("err_unrecover")
             errorCode = "ERR_UNRECOVER"
+            statusCode = EpsonStatusCode.ERR_UNRECOVER
         }
 
         if (status?.errorStatus == Printer.MECHANICAL_ERR || status?.errorStatus == Printer.AUTOCUTTER_ERR) {
             errorMes = getErrorMessage("err_autocutter") + getErrorMessage("err_need_recover")
             errorCode = "ERR_AUTOCUTTER"
+            statusCode = EpsonStatusCode.ERR_AUTOCUTTER
         }
 
         if (status?.errorStatus == Printer.AUTORECOVER_ERR) {
@@ -749,34 +849,74 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 Printer.HEAD_OVERHEAT -> {
                     errorMes = getErrorMessage("err_head") + getErrorMessage("err_overheat")
                     errorCode = "ERR_OVERHEAT_HEAD"
+                    statusCode = EpsonStatusCode.ERR_OVERHEAT_HEAD
                 }
                 Printer.MOTOR_OVERHEAT -> {
                     errorMes = getErrorMessage("err_motor") + getErrorMessage("err_overheat")
                     errorCode = "ERR_OVERHEAT_MOTOR"
+                    statusCode = EpsonStatusCode.ERR_OVERHEAT_MOTOR
                 }
                 Printer.BATTERY_OVERHEAT -> {
                     errorMes = getErrorMessage("err_battery") + getErrorMessage("err_overheat")
                     errorCode = "ERR_OVERHEAT_BATTERY"
+                    statusCode = EpsonStatusCode.ERR_OVERHEAT_BATTERY
                 }
                 Printer.WRONG_PAPER -> {
                     errorMes = getErrorMessage("err_wrong_paper")
                     errorCode = "ERR_WRONG_PAPER"
+                    statusCode = EpsonStatusCode.ERR_WRONG_PAPER
                 }
             }
         }
         if (status?.batteryLevel == Printer.BATTERY_LEVEL_0) {
             errorMes = getErrorMessage("err_battery_real_end")
             errorCode = "ERR_BATTERY_END"
+            statusCode = EpsonStatusCode.ERR_BATTERY_END
         }
 
-        if (errorMes.isEmpty()) {
-            result["message"] = getErrorMessage("")
-            result["code"] = "ERR_UNKNOWN"
+        return if (errorMes.isEmpty()) {
+            PrinterStatusError(EpsonStatusCode.UNKNOWN, getErrorMessage(""), "ERR_UNKNOWN")
         } else {
-            result["message"] = errorMes
-            result["code"] = errorCode
+            PrinterStatusError(statusCode, errorMes, errorCode)
         }
-        return result
+    }
+
+    /**
+     * Map an Epson SDK callback `code` (0..12) to the unified [EpsonStatusCode].
+     */
+    private fun callbackCodeToStatus(code: Int): Int = when (code) {
+        0 -> EpsonStatusCode.SUCCESS
+        1 -> EpsonStatusCode.PRINTING
+        2 -> EpsonStatusCode.ERR_AUTORECOVER
+        3 -> EpsonStatusCode.ERR_COVER_OPEN
+        4 -> EpsonStatusCode.ERR_CUTTER
+        5 -> EpsonStatusCode.ERR_MECHANICAL
+        6 -> EpsonStatusCode.ERR_EMPTY
+        7 -> EpsonStatusCode.ERR_UNRECOVER
+        8 -> EpsonStatusCode.ERR_FAILURE
+        9 -> EpsonStatusCode.ERR_NOT_FOUND
+        10 -> EpsonStatusCode.ERR_SYSTEM
+        11 -> EpsonStatusCode.ERR_PORT
+        12 -> EpsonStatusCode.ERR_TIMEOUT
+        else -> EpsonStatusCode.UNKNOWN
+    }
+
+    /**
+     * Map an Epos2Exception.errorStatus to the unified [EpsonStatusCode].
+     */
+    private fun epos2ExceptionToStatus(errorStatus: Int): Int = when (errorStatus) {
+        Epos2Exception.ERR_PARAM -> EpsonStatusCode.ERR_PARAM
+        Epos2Exception.ERR_CONNECT -> EpsonStatusCode.ERR_CONNECT
+        Epos2Exception.ERR_TIMEOUT -> EpsonStatusCode.ERR_TIMEOUT
+        Epos2Exception.ERR_MEMORY -> EpsonStatusCode.ERR_SYSTEM
+        Epos2Exception.ERR_ILLEGAL -> EpsonStatusCode.ERR_FAILURE
+        Epos2Exception.ERR_PROCESSING -> EpsonStatusCode.ERR_PROCESSING
+        Epos2Exception.ERR_NOT_FOUND -> EpsonStatusCode.ERR_NOT_FOUND
+        Epos2Exception.ERR_IN_USE -> EpsonStatusCode.ERR_FAILURE
+        Epos2Exception.ERR_TYPE_INVALID -> EpsonStatusCode.ERR_PARAM
+        Epos2Exception.ERR_DISCONNECT -> EpsonStatusCode.ERR_DISCONNECT
+        Epos2Exception.ERR_FAILURE -> EpsonStatusCode.ERR_FAILURE
+        else -> EpsonStatusCode.UNKNOWN
     }
 
     private fun getErrorMessage(errorKey: String, withNewLine: Boolean = true): String {
@@ -784,7 +924,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             "warn_receipt_near_end" -> "Roll paper is nearly end."
             "warn_battery_near_end" -> "Battery level of printer is low."
             "err_no_response", "err_timeout" ->
-                "Please check the connection of the printer and the mobile terminal.\nConnection get lost or timeout."
+                "Please check the connection of the printer."
             "err_cover_open" -> "Please close roll paper cover."
             "err_receipt_end", "err_empty" -> "Please check roll paper."
             "err_paper_feed" -> "Please release a paper feed switch."

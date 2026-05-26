@@ -52,6 +52,8 @@ class PluginImplement: NSObject {
         print("Epos2Discovery.start response: \(response) | printers count: \(printers.count)")
         let resp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: false)
         if response != EPOS2_SUCCESS.rawValue {
+            resp.statusCode = EpsonStatusCode.fromEposApi(response)
+            resp.code = response
             resp.message = MessageHelper.errorEpos(response, method: "start")
             return result(try? resp.toJSONString())
         }
@@ -67,14 +69,23 @@ class PluginImplement: NSObject {
                     return
                 }
                 
-                let successResp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: true)
+                let successResp = EpsonEposPrinterResult(
+                    type: PluginMethods.onDiscovery.rawValue,
+                    success: true,
+                    statusCode: EpsonStatusCode.success,
+                    message: "Successfully!"
+                )
                 successResp.content = self.printers
                 do {
                     let data = try successResp.toJSONString()
                     result(data)
                 } catch let error {
-                    let errorResp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: false)
-                    errorResp.message = error.localizedDescription
+                    let errorResp = EpsonEposPrinterResult(
+                        type: PluginMethods.onDiscovery.rawValue,
+                        success: false,
+                        statusCode: EpsonStatusCode.errFailure,
+                        message: error.localizedDescription
+                    )
                     result(try? errorResp.toJSONString())
                 }
             })
@@ -114,9 +125,17 @@ class PluginImplement: NSObject {
 }
 
 private extension PluginImplement {
-    func returnFailResultWith(method: String, message: String) {
-        let resp = EpsonEposPrinterResult(type: method, success: false)
-        resp.message = message
+    func returnFailResultWith(method: String,
+                              message: String,
+                              statusCode: Int = EpsonStatusCode.errFailure,
+                              code: Int32? = nil) {
+        let resp = EpsonEposPrinterResult(
+            type: method,
+            success: false,
+            statusCode: statusCode,
+            message: message,
+            code: code
+        )
         self.result?(try? resp.toJSONString())
     }
     
@@ -125,17 +144,21 @@ private extension PluginImplement {
         let resp = EpsonEposPrinterResult(type: "onPrint\(printType)", success: false)
         resp.code = code
         
-        let hasSpecificError = !(errorFromStatus["code"]?.isEmpty ?? true) && errorFromStatus["code"] != "ERR_UNKNOWN"
+        let statusErrorCode = errorFromStatus.statusCode
+        let hasSpecificError = statusErrorCode != EpsonStatusCode.unknown
         
         if code == EPOS2_CODE_SUCCESS.rawValue && !hasSpecificError {
             resp.success = true
+            resp.statusCode = EpsonStatusCode.success
             resp.message = "Success"
         } else {
             resp.success = false
             if hasSpecificError {
-                resp.message = errorFromStatus["message"]
-                resp.content = errorFromStatus["code"]
+                resp.statusCode = statusErrorCode
+                resp.message = errorFromStatus.message
+                resp.content = errorFromStatus.legacyCode
             } else {
+                resp.statusCode = EpsonStatusCode.fromEposPrintCode(code)
                 resp.message = MessageHelper.result(code, errMessage: "")
                 resp.content = "ERR_PRINT_CODE_\(code)"
             }
@@ -170,8 +193,12 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         }
         
         guard initializePrinterObject() else {
-            let resp = EpsonEposPrinterResult(type: call.method, success: false)
-            resp.message = NSLocalizedString("error_not_support_printer", comment: "")
+            let resp = EpsonEposPrinterResult(
+                type: call.method,
+                success: false,
+                statusCode: EpsonStatusCode.errSystem,
+                message: NSLocalizedString("error_not_support_printer", comment: "")
+            )
             result(try? resp.toJSONString())
             return
         }
@@ -186,12 +213,20 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
               let target = args["target"] as? String,
               target.isEmpty == false,
               let series = args["series"] as? String else {
-            returnFailResultWith(method: call.method, message: NSLocalizedString("error_missing_print_data", comment: ""))
+            returnFailResultWith(
+                method: call.method,
+                message: NSLocalizedString("error_missing_print_data", comment: ""),
+                statusCode: EpsonStatusCode.errParam
+            )
             return
         }
         
         guard let commands = args["commands"] as? [[String: Any]] else {
-            returnFailResultWith(method: call.method, message: NSLocalizedString("error_missing_print_data", comment: ""))
+            returnFailResultWith(
+                method: call.method,
+                message: NSLocalizedString("error_missing_print_data", comment: ""),
+                statusCode: EpsonStatusCode.errParam
+            )
             return
         }
         
@@ -211,10 +246,21 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         do {
             let status = printer.sendData(Int(EPOS2_PARAM_DEFAULT))
             if status != EPOS2_SUCCESS.rawValue {
+                // Try to read printer status info for a more specific error
+                let statusError = makeErrorMessage(printer.getStatus())
                 let message = MessageHelper.errorEpos(status, method: "sendData")
-                resp.message = message
+                
                 resp.success = false
-                resp.content = "ERR_SEND_DATA_\(status)"
+                resp.code = status
+                if statusError.statusCode != EpsonStatusCode.unknown {
+                    resp.statusCode = statusError.statusCode
+                    resp.message = statusError.message
+                    resp.content = statusError.legacyCode
+                } else {
+                    resp.statusCode = EpsonStatusCode.fromEposApi(status)
+                    resp.message = message
+                    resp.content = "ERR_SEND_DATA_\(status)"
+                }
                 
                 printer.clearCommandBuffer()
                 _ = printer.disconnect()
@@ -224,6 +270,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
                 print("Sent data to printer \(target) \(series)")
             }
         } catch let error {
+            resp.statusCode = EpsonStatusCode.errFailure
             resp.message = error.localizedDescription
             resp.success = false
             result(try? resp.toJSONString())
@@ -245,7 +292,12 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         let result = printer.connect(target, timeout: Int(EPOS2_PARAM_DEFAULT))
         if result != EPOS2_SUCCESS.rawValue {
             let message = MessageHelper.errorEpos(result, method: "connect")
-            returnFailResultWith(method: method, message: message)
+            returnFailResultWith(
+                method: method,
+                message: message,
+                statusCode: EpsonStatusCode.fromEposApi(result),
+                code: result
+            )
             return false
         }
         
@@ -301,41 +353,58 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         print("Printer warnings: \(warningMsg)")
     }
 
-    func makeErrorMessage(_ status: Epos2PrinterStatusInfo?) -> [String: String] {
+    /// Result of translating a `Epos2PrinterStatusInfo` into something we can
+    /// return to the Flutter layer.
+    struct PrinterStatusError {
+        let statusCode: Int
+        let message: String
+        /// String code kept for backward compatibility with previous payload.
+        let legacyCode: String
+    }
+
+    func makeErrorMessage(_ status: Epos2PrinterStatusInfo?) -> PrinterStatusError {
         var errMsg = ""
-        var errCode = ""
+        var legacyCode = "ERR_UNKNOWN"
+        var statusCode = EpsonStatusCode.unknown
         guard let status = status else {
-            return ["message": "", "code": "ERR_UNKNOWN"]
+            return PrinterStatusError(statusCode: EpsonStatusCode.unknown, message: "", legacyCode: "ERR_UNKNOWN")
         }
         
         if status.online == EPOS2_FALSE {
             errMsg += NSLocalizedString("err_offline", comment: "")
-            errCode = "ERR_OFFLINE"
+            legacyCode = "ERR_OFFLINE"
+            statusCode = EpsonStatusCode.errOffline
         }
         if status.connection == EPOS2_FALSE {
             errMsg += NSLocalizedString("err_no_response", comment: "")
-            errCode = "ERR_NO_RESPONSE"
+            legacyCode = "ERR_NO_RESPONSE"
+            statusCode = EpsonStatusCode.errNoResponse
         }
         if status.coverOpen == EPOS2_TRUE {
             errMsg += NSLocalizedString("err_cover_open", comment: "")
-            errCode = "ERR_COVER_OPEN"
+            legacyCode = "ERR_COVER_OPEN"
+            statusCode = EpsonStatusCode.errCoverOpen
         }
         if status.paper == EPOS2_PAPER_EMPTY.rawValue {
             errMsg += NSLocalizedString("err_receipt_end", comment: "")
-            errCode = "ERR_RECEIPT_END"
+            legacyCode = "ERR_RECEIPT_END"
+            statusCode = EpsonStatusCode.errReceiptEnd
         }
         if status.paperFeed == EPOS2_TRUE || status.panelSwitch == EPOS2_SWITCH_ON.rawValue {
             errMsg += NSLocalizedString("err_paper_feed", comment: "")
-            errCode = "ERR_PAPER_FEED"
+            legacyCode = "ERR_PAPER_FEED"
+            statusCode = EpsonStatusCode.errPaperFeed
         }
         if status.errorStatus == EPOS2_MECHANICAL_ERR.rawValue || status.errorStatus == EPOS2_AUTOCUTTER_ERR.rawValue {
             errMsg += NSLocalizedString("err_autocutter", comment: "")
             errMsg += NSLocalizedString("err_need_recover", comment: "")
-            errCode = "ERR_AUTOCUTTER"
+            legacyCode = "ERR_AUTOCUTTER"
+            statusCode = EpsonStatusCode.errAutocutter
         }
         if status.errorStatus == EPOS2_UNRECOVER_ERR.rawValue {
             errMsg += NSLocalizedString("err_unrecover", comment: "")
-            errCode = "ERR_UNRECOVER"
+            legacyCode = "ERR_UNRECOVER"
+            statusCode = EpsonStatusCode.errUnrecover
         }
         
         if status.errorStatus == EPOS2_AUTORECOVER_ERR.rawValue {
@@ -343,40 +412,46 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
             case EPOS2_HEAD_OVERHEAT.rawValue:
                 errMsg += NSLocalizedString("err_head", comment: "")
                 errMsg += NSLocalizedString("err_overheat", comment: "")
-                errCode = "ERR_OVERHEAT_HEAD"
+                legacyCode = "ERR_OVERHEAT_HEAD"
+                statusCode = EpsonStatusCode.errOverheatHead
             case EPOS2_MOTOR_OVERHEAT.rawValue:
                 errMsg += NSLocalizedString("err_motor", comment: "")
                 errMsg += NSLocalizedString("err_overheat", comment: "")
-                errCode = "ERR_OVERHEAT_MOTOR"
+                legacyCode = "ERR_OVERHEAT_MOTOR"
+                statusCode = EpsonStatusCode.errOverheatMotor
             case EPOS2_BATTERY_OVERHEAT.rawValue:
                 errMsg += NSLocalizedString("err_battery", comment: "")
                 errMsg += NSLocalizedString("err_overheat", comment: "")
-                errCode = "ERR_OVERHEAT_BATTERY"
+                legacyCode = "ERR_OVERHEAT_BATTERY"
+                statusCode = EpsonStatusCode.errOverheatBattery
             case EPOS2_WRONG_PAPER.rawValue:
                 errMsg += NSLocalizedString("err_wrong_paper", comment: "")
-                errCode = "ERR_WRONG_PAPER"
+                legacyCode = "ERR_WRONG_PAPER"
+                statusCode = EpsonStatusCode.errWrongPaper
             default:
                 break
             }
         }
         if status.batteryLevel == EPOS2_BATTERY_LEVEL_0.rawValue {
             errMsg += NSLocalizedString("err_battery_real_end", comment: "")
-            errCode = "ERR_BATTERY_END"
+            legacyCode = "ERR_BATTERY_END"
+            statusCode = EpsonStatusCode.errBatteryEnd
         }
         if status.removalWaiting == EPOS2_REMOVAL_WAIT_PAPER.rawValue {
             errMsg += NSLocalizedString("err_wait_removal", comment: "")
-            errCode = "ERR_WAIT_REMOVAL"
+            legacyCode = "ERR_WAIT_REMOVAL"
+            statusCode = EpsonStatusCode.errWaitRemoval
         }
         if status.unrecoverError == EPOS2_HIGH_VOLTAGE_ERR.rawValue ||
             status.unrecoverError == EPOS2_LOW_VOLTAGE_ERR.rawValue {
             errMsg += NSLocalizedString("err_voltage", comment: "")
-            errCode = "ERR_VOLTAGE"
+            legacyCode = "ERR_VOLTAGE"
+            statusCode = EpsonStatusCode.errVoltage
         }
         
         if errMsg.isEmpty {
-            errCode = "ERR_UNKNOWN"
+            return PrinterStatusError(statusCode: EpsonStatusCode.unknown, message: "", legacyCode: "ERR_UNKNOWN")
         }
-        
-        return ["message": errMsg, "code": errCode]
+        return PrinterStatusError(statusCode: statusCode, message: errMsg, legacyCode: legacyCode)
     }
 }
