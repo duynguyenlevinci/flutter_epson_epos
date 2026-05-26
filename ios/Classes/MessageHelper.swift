@@ -7,13 +7,57 @@
 
 import Foundation
 
+/// In-memory replacement for the plugin's `.strings` table. The previous
+/// `ePOS2Localizable.strings` file was both malformed (wrapped in `{}`) and
+/// shipped under a non-default table, so every `NSLocalizedString(key, ...)`
+/// call returned the key itself. Keep the translations here so the plugin is
+/// self-contained and does not depend on the Pod resource bundle layout.
+internal func eposLocalizedString(_ key: String) -> String {
+    return EposLocalizedStrings.values[key] ?? key
+}
+
+internal enum EposLocalizedStrings {
+    static let values: [String: String] = [
+        "methoderr_errcode": "Error Code",
+        "methoderr_method": "Method",
+        "statusmsg_result": "Result",
+        "statusmsg_description": "Description",
+
+        "warn_receipt_near_end": "Roll paper is nearly end.\n",
+        "warn_battery_near_end": "Battery level of printer is low.\n",
+        "warn_detect_paper": "Please take the receipt.\n",
+        "warn_detect_unknown": "Please check if no ambient light reaches the paper outlet and that the paper-taken sensor in the printer is enabled.\n",
+
+        "err_offline": "Printer is offline.\n",
+        "err_no_response": "Please check the connection of the printer and the mobile terminal. Connection lost.\n",
+        "err_cover_open": "Please close the roll paper cover.\n",
+        "err_paper_feed": "Please release the paper feed switch.\n",
+        "err_autocutter": "Please remove jammed paper and close the roll paper cover. Remove any jammed paper or foreign substances in the printer, then power-cycle the printer.\n",
+        "err_need_recover": "Then, if the printer doesn't recover from the error, please cycle the power switch.\n",
+        "err_unrecover": "Please cycle the power switch of the printer. If the same error occurs after power-cycling, the printer may be out of order.",
+        "err_receipt_end": "Please check the roll paper.\n",
+        "err_battery": "Battery of the printer is hot.\n",
+        "err_overheat": "Please wait until the error LED of the printer turns off.\n",
+        "err_head": "Print head of the printer is hot.\n",
+        "err_motor": "Motor Driver IC of the printer is hot.\n",
+        "err_wrong_paper": "Please set the correct roll paper.\n",
+        "err_battery_real_end": "Please connect AC adapter or change the battery. Battery of the printer is almost empty.\n",
+        "err_wait_removal": "Please remove the paper.\n",
+        "err_voltage": "Please check the voltage status.\n",
+        "wait": "Please wait...",
+
+        "error_missing_print_data": "Please provide all print data",
+        "error_not_support_printer": "Printer not supported",
+    ]
+}
+
 class MessageHelper {
     class func errorEpos(_ resultCode: Int32, method: String) -> String {
         return String(
             format: "%@\n%@\n\n%@\n%@\n",
-            NSLocalizedString("methoderr_errcode", comment: ""),
+            eposLocalizedString("methoderr_errcode"),
             getEposErrorText(resultCode),
-            NSLocalizedString("methoderr_method", comment: ""),
+            eposLocalizedString("methoderr_method"),
             method
         )
     }
@@ -21,9 +65,9 @@ class MessageHelper {
     class func errorEposBt(_ resultCode: Int32, method: String) -> String {
         return String(
             format: "%@\n%@\n\n%@\n%@\n",
-            NSLocalizedString("methoderr_errcode", comment: ""),
+            eposLocalizedString("methoderr_errcode"),
             getEposBtErrorText(resultCode),
-            NSLocalizedString("methoderr_method", comment: ""),
+            eposLocalizedString("methoderr_method"),
             method
         )
     }
@@ -32,15 +76,15 @@ class MessageHelper {
         if errMessage.isEmpty {
             return String(
                 format: "%@\n%@\n",
-                NSLocalizedString("statusmsg_result", comment: ""),
+                eposLocalizedString("statusmsg_result"),
                 getEposResultText(code)
             )
         }
         return String(
             format: "%@\n%@\n\n%@\n%@\n",
-            NSLocalizedString("statusmsg_result", comment: ""),
+            eposLocalizedString("statusmsg_result"),
             getEposResultText(code),
-            NSLocalizedString("statusmsg_description", comment: ""),
+            eposLocalizedString("statusmsg_description"),
             errMessage
         )
     }

@@ -35,8 +35,19 @@ class PluginImplement: NSObject {
     public func onDiscovery(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         if let args = call.arguments as? [String: Any] {
             print("Discovery args: \(args)")
-            let type = args["type"] as? Int32 ?? EPOS2_PORTTYPE_ALL.rawValue
-            filterOption.portType = type
+            // Dart sends `int` which arrives as `NSNumber`; cast through both
+            // `Int32` and `Int` to be safe across architectures.
+            let portType: Int32
+            if let value = args["type"] as? Int32 {
+                portType = value
+            } else if let value = args["type"] as? Int {
+                portType = Int32(value)
+            } else if let value = args["type"] as? NSNumber {
+                portType = value.int32Value
+            } else {
+                portType = EPOS2_PORTTYPE_ALL.rawValue
+            }
+            filterOption.portType = portType
         } else {
             filterOption.portType = EPOS2_PORTTYPE_ALL.rawValue
         }
@@ -48,8 +59,25 @@ class PluginImplement: NSObject {
     
     private func _onDiscovery(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         self.result = result
+
+        // Cancel any pending finish-timer from a previous discovery so we do not
+        // accidentally return the previous call's result for this new one.
+        cancellable.forEach { $0.cancel() }
+        cancellable.removeAll()
+        printers.removeAll()
+
+        // Discovery must be in the stopped state before calling `start` again.
+        // If a previous session is still in PROCESSING state (e.g. user tapped
+        // discovery twice in a row, or the SDK kept state from a prior run),
+        // `start` will fail with EPOS2_ERR_ILLEGAL (code 5). Loop on stop()
+        // until it returns either SUCCESS or something other than PROCESSING.
+        var stopResult = EPOS2_SUCCESS.rawValue
+        repeat {
+            stopResult = Epos2Discovery.stop()
+        } while stopResult == EPOS2_ERR_PROCESSING.rawValue
+
         let response = Epos2Discovery.start(filterOption, delegate: self)
-        print("Epos2Discovery.start response: \(response) | printers count: \(printers.count)")
+        print("Epos2Discovery.start response: \(response) | portType: \(filterOption.portType) | printers count: \(printers.count)")
         let resp = EpsonEposPrinterResult(type: PluginMethods.onDiscovery.rawValue, success: false)
         if response != EPOS2_SUCCESS.rawValue {
             resp.statusCode = EpsonStatusCode.fromEposApi(response)
@@ -208,7 +236,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
                 type: call.method,
                 success: false,
                 statusCode: EpsonStatusCode.errSystem,
-                message: NSLocalizedString("error_not_support_printer", comment: "")
+                message: eposLocalizedString("error_not_support_printer")
             )
             result(try? resp.toJSONString())
             return
@@ -226,7 +254,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
               let series = args["series"] as? String else {
             returnFailResultWith(
                 method: call.method,
-                message: NSLocalizedString("error_missing_print_data", comment: ""),
+                message: eposLocalizedString("error_missing_print_data"),
                 statusCode: EpsonStatusCode.errParam
             )
             return
@@ -235,7 +263,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         guard let commands = args["commands"] as? [[String: Any]] else {
             returnFailResultWith(
                 method: call.method,
-                message: NSLocalizedString("error_missing_print_data", comment: ""),
+                message: eposLocalizedString("error_missing_print_data"),
                 statusCode: EpsonStatusCode.errParam
             )
             return
@@ -350,16 +378,16 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         let warningMsg = NSMutableString()
         
         if status.paper == EPOS2_PAPER_NEAR_END.rawValue {
-            warningMsg.append(NSLocalizedString("warn_receipt_near_end", comment: ""))
+            warningMsg.append(eposLocalizedString("warn_receipt_near_end"))
         }
         if status.batteryLevel == EPOS2_BATTERY_LEVEL_1.rawValue {
-            warningMsg.append(NSLocalizedString("warn_battery_near_end", comment: ""))
+            warningMsg.append(eposLocalizedString("warn_battery_near_end"))
         }
         if status.paperTakenSensor == EPOS2_REMOVAL_DETECT_PAPER.rawValue {
-            warningMsg.append(NSLocalizedString("warn_detect_paper", comment: ""))
+            warningMsg.append(eposLocalizedString("warn_detect_paper"))
         }
         if status.paperTakenSensor == EPOS2_REMOVAL_DETECT_UNKNOWN.rawValue {
-            warningMsg.append(NSLocalizedString("warn_detect_unknown", comment: ""))
+            warningMsg.append(eposLocalizedString("warn_detect_unknown"))
         }
         print("Printer warnings: \(warningMsg)")
     }
@@ -395,38 +423,38 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         }
         
         if status.online == EPOS2_FALSE {
-            errMsg += NSLocalizedString("err_offline", comment: "")
+            errMsg += eposLocalizedString("err_offline")
             legacyCode = "ERR_OFFLINE"
             statusCode = EpsonStatusCode.errOffline
         }
         if status.connection == EPOS2_FALSE {
-            errMsg += NSLocalizedString("err_no_response", comment: "")
+            errMsg += eposLocalizedString("err_no_response")
             legacyCode = "ERR_NO_RESPONSE"
             statusCode = EpsonStatusCode.errNoResponse
         }
         if status.coverOpen == EPOS2_TRUE {
-            errMsg += NSLocalizedString("err_cover_open", comment: "")
+            errMsg += eposLocalizedString("err_cover_open")
             legacyCode = "ERR_COVER_OPEN"
             statusCode = EpsonStatusCode.errCoverOpen
         }
         if status.paper == EPOS2_PAPER_EMPTY.rawValue {
-            errMsg += NSLocalizedString("err_receipt_end", comment: "")
+            errMsg += eposLocalizedString("err_receipt_end")
             legacyCode = "ERR_RECEIPT_END"
             statusCode = EpsonStatusCode.errReceiptEnd
         }
         if status.paperFeed == EPOS2_TRUE || status.panelSwitch == EPOS2_SWITCH_ON.rawValue {
-            errMsg += NSLocalizedString("err_paper_feed", comment: "")
+            errMsg += eposLocalizedString("err_paper_feed")
             legacyCode = "ERR_PAPER_FEED"
             statusCode = EpsonStatusCode.errPaperFeed
         }
         if status.errorStatus == EPOS2_MECHANICAL_ERR.rawValue || status.errorStatus == EPOS2_AUTOCUTTER_ERR.rawValue {
-            errMsg += NSLocalizedString("err_autocutter", comment: "")
-            errMsg += NSLocalizedString("err_need_recover", comment: "")
+            errMsg += eposLocalizedString("err_autocutter")
+            errMsg += eposLocalizedString("err_need_recover")
             legacyCode = "ERR_AUTOCUTTER"
             statusCode = EpsonStatusCode.errAutocutter
         }
         if status.errorStatus == EPOS2_UNRECOVER_ERR.rawValue {
-            errMsg += NSLocalizedString("err_unrecover", comment: "")
+            errMsg += eposLocalizedString("err_unrecover")
             legacyCode = "ERR_UNRECOVER"
             statusCode = EpsonStatusCode.errUnrecover
         }
@@ -434,22 +462,22 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         if status.errorStatus == EPOS2_AUTORECOVER_ERR.rawValue {
             switch status.autoRecoverError {
             case EPOS2_HEAD_OVERHEAT.rawValue:
-                errMsg += NSLocalizedString("err_head", comment: "")
-                errMsg += NSLocalizedString("err_overheat", comment: "")
+                errMsg += eposLocalizedString("err_head")
+                errMsg += eposLocalizedString("err_overheat")
                 legacyCode = "ERR_OVERHEAT_HEAD"
                 statusCode = EpsonStatusCode.errOverheatHead
             case EPOS2_MOTOR_OVERHEAT.rawValue:
-                errMsg += NSLocalizedString("err_motor", comment: "")
-                errMsg += NSLocalizedString("err_overheat", comment: "")
+                errMsg += eposLocalizedString("err_motor")
+                errMsg += eposLocalizedString("err_overheat")
                 legacyCode = "ERR_OVERHEAT_MOTOR"
                 statusCode = EpsonStatusCode.errOverheatMotor
             case EPOS2_BATTERY_OVERHEAT.rawValue:
-                errMsg += NSLocalizedString("err_battery", comment: "")
-                errMsg += NSLocalizedString("err_overheat", comment: "")
+                errMsg += eposLocalizedString("err_battery")
+                errMsg += eposLocalizedString("err_overheat")
                 legacyCode = "ERR_OVERHEAT_BATTERY"
                 statusCode = EpsonStatusCode.errOverheatBattery
             case EPOS2_WRONG_PAPER.rawValue:
-                errMsg += NSLocalizedString("err_wrong_paper", comment: "")
+                errMsg += eposLocalizedString("err_wrong_paper")
                 legacyCode = "ERR_WRONG_PAPER"
                 statusCode = EpsonStatusCode.errWrongPaper
             default:
@@ -457,18 +485,18 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
             }
         }
         if status.batteryLevel == EPOS2_BATTERY_LEVEL_0.rawValue {
-            errMsg += NSLocalizedString("err_battery_real_end", comment: "")
+            errMsg += eposLocalizedString("err_battery_real_end")
             legacyCode = "ERR_BATTERY_END"
             statusCode = EpsonStatusCode.errBatteryEnd
         }
         if status.removalWaiting == EPOS2_REMOVAL_WAIT_PAPER.rawValue {
-            errMsg += NSLocalizedString("err_wait_removal", comment: "")
+            errMsg += eposLocalizedString("err_wait_removal")
             legacyCode = "ERR_WAIT_REMOVAL"
             statusCode = EpsonStatusCode.errWaitRemoval
         }
         if status.unrecoverError == EPOS2_HIGH_VOLTAGE_ERR.rawValue ||
             status.unrecoverError == EPOS2_LOW_VOLTAGE_ERR.rawValue {
-            errMsg += NSLocalizedString("err_voltage", comment: "")
+            errMsg += eposLocalizedString("err_voltage")
             legacyCode = "ERR_VOLTAGE"
             statusCode = EpsonStatusCode.errVoltage
         }
