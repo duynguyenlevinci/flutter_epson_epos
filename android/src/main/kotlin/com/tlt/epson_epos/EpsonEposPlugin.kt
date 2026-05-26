@@ -839,7 +839,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
 
         if (status?.errorStatus == Printer.MECHANICAL_ERR || status?.errorStatus == Printer.AUTOCUTTER_ERR) {
-            errorMes = getErrorMessage("err_autocutter") + getErrorMessage("err_need_recover")
+            errorMes = getErrorMessage("err_autocutter") + " " + getErrorMessage("err_need_recover")
             errorCode = "ERR_AUTOCUTTER"
             statusCode = EpsonStatusCode.ERR_AUTOCUTTER
         }
@@ -847,17 +847,17 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         if (status?.errorStatus == Printer.AUTORECOVER_ERR) {
             when (status.autoRecoverError) {
                 Printer.HEAD_OVERHEAT -> {
-                    errorMes = getErrorMessage("err_head") + getErrorMessage("err_overheat")
+                    errorMes = getErrorMessage("err_head") + " " + getErrorMessage("err_overheat")
                     errorCode = "ERR_OVERHEAT_HEAD"
                     statusCode = EpsonStatusCode.ERR_OVERHEAT_HEAD
                 }
                 Printer.MOTOR_OVERHEAT -> {
-                    errorMes = getErrorMessage("err_motor") + getErrorMessage("err_overheat")
+                    errorMes = getErrorMessage("err_motor") + " " + getErrorMessage("err_overheat")
                     errorCode = "ERR_OVERHEAT_MOTOR"
                     statusCode = EpsonStatusCode.ERR_OVERHEAT_MOTOR
                 }
                 Printer.BATTERY_OVERHEAT -> {
-                    errorMes = getErrorMessage("err_battery") + getErrorMessage("err_overheat")
+                    errorMes = getErrorMessage("err_battery") + " " + getErrorMessage("err_overheat")
                     errorCode = "ERR_OVERHEAT_BATTERY"
                     statusCode = EpsonStatusCode.ERR_OVERHEAT_BATTERY
                 }
@@ -877,7 +877,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         return if (errorMes.isEmpty()) {
             PrinterStatusError(EpsonStatusCode.UNKNOWN, getErrorMessage(""), "ERR_UNKNOWN")
         } else {
-            PrinterStatusError(statusCode, errorMes, errorCode)
+            PrinterStatusError(statusCode, errorMes.trim(), errorCode)
         }
     }
 
@@ -919,7 +919,7 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         else -> EpsonStatusCode.UNKNOWN
     }
 
-    private fun getErrorMessage(errorKey: String, withNewLine: Boolean = true): String {
+    private fun getErrorMessage(errorKey: String, withNewLine: Boolean = false): String {
         val errorMes = when (errorKey.lowercase()) {
             "warn_receipt_near_end" -> "Roll paper is nearly end."
             "warn_battery_near_end" -> "Battery level of printer is low."
@@ -929,18 +929,18 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             "err_receipt_end", "err_empty" -> "Please check roll paper."
             "err_paper_feed" -> "Please release a paper feed switch."
             "err_autocutter", "err_cutter" ->
-                "Please remove jammed paper and close roll paper cover.\nRemove any jammed paper or foreign substances in the printer, and then turn the printer off and turn the printer on again."
+                "Please remove jammed paper and close roll paper cover. Remove any jammed paper or foreign substances in the printer, and then turn the printer off and turn the printer on again."
             "err_need_recover" ->
                 "Then, If the printer doesn\'t recover from error, please cycle the power switch."
             "err_unrecover", "err_unrecoverable" ->
-                "Please cycle the power switch of the printer.\nIf same errors occurred even power cycled, the printer may be out of order."
-            "err_overheat" -> "Please wait until error LED of the printer turns off. "
+                "Please cycle the power switch of the printer. If same errors occurred even power cycled, the printer may be out of order."
+            "err_overheat" -> "Please wait until error LED of the printer turns off."
             "err_head" -> "Print head of printer is hot."
             "err_motor" -> "Motor Driver IC of printer is hot."
             "err_battery" -> "Battery of printer is hot."
             "err_wrong_paper" -> "Please set correct roll paper."
             "err_battery_real_end", "err_battery_end" ->
-                "Please connect AC adapter or change the battery.\nBattery of printer is almost empty."
+                "Please connect AC adapter or change the battery. Battery of printer is almost empty."
             "err_offline" -> "Printer is offline."
             "err_mechanical" -> "Mechanical error occurred."
             "err_failure" -> "Print job failed."

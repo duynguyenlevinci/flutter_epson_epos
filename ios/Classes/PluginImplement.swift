@@ -159,12 +159,23 @@ private extension PluginImplement {
                 resp.content = errorFromStatus.legacyCode
             } else {
                 resp.statusCode = EpsonStatusCode.fromEposPrintCode(code)
-                resp.message = MessageHelper.result(code, errMessage: "")
+                resp.message = sanitizeAnyMessage(MessageHelper.result(code, errMessage: ""))
                 resp.content = "ERR_PRINT_CODE_\(code)"
             }
         }
         
         self.result?(try? resp.toJSONString())
+    }
+
+    /// Free-function sanitizer used outside the `Epos2PtrReceiveDelegate` extension.
+    func sanitizeAnyMessage(_ message: String) -> String {
+        let collapsed = message
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        return collapsed
+            .components(separatedBy: " ")
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }
 
@@ -258,7 +269,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
                     resp.content = statusError.legacyCode
                 } else {
                     resp.statusCode = EpsonStatusCode.fromEposApi(status)
-                    resp.message = message
+                    resp.message = sanitizeAnyMessage(message)
                     resp.content = "ERR_SEND_DATA_\(status)"
                 }
                 
@@ -294,7 +305,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
             let message = MessageHelper.errorEpos(result, method: "connect")
             returnFailResultWith(
                 method: method,
-                message: message,
+                message: sanitizeAnyMessage(message),
                 statusCode: EpsonStatusCode.fromEposApi(result),
                 code: result
             )
@@ -360,6 +371,19 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         let message: String
         /// String code kept for backward compatibility with previous payload.
         let legacyCode: String
+    }
+
+    /// Normalize a message coming from `ePOS2Localizable.strings` so it doesn't
+    /// contain stray newlines that would make Flutter loggers (like `logger`)
+    /// render the output across multiple lines.
+    private func sanitizeMessage(_ message: String) -> String {
+        let collapsed = message
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        return collapsed
+            .components(separatedBy: " ")
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     func makeErrorMessage(_ status: Epos2PrinterStatusInfo?) -> PrinterStatusError {
@@ -452,6 +476,10 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         if errMsg.isEmpty {
             return PrinterStatusError(statusCode: EpsonStatusCode.unknown, message: "", legacyCode: "ERR_UNKNOWN")
         }
-        return PrinterStatusError(statusCode: statusCode, message: errMsg, legacyCode: legacyCode)
+        return PrinterStatusError(
+            statusCode: statusCode,
+            message: sanitizeMessage(errMsg),
+            legacyCode: legacyCode
+        )
     }
 }

@@ -1,9 +1,12 @@
-## 1.1.1
+## 1.1.2
 
 - Add unified `status_code: int` + `message: string` to print response.
   - New `EpsonStatusCode` constants exposed on Dart side; `EpsonEPOS.onPrint()` now returns a typed `EpsonPrinterResponse`.
   - [Android] All error paths in `onPrint`, `onPtrReceive`, `getPrinterSetting`, `setPrinterSetting` now populate `status_code` based on `PrinterStatusInfo` / `Epos2Exception`.
   - [iOS] All error paths in `onPrint`, `printData`, `connectPrinter`, `onPtrReceive` now populate `status_code` based on `Epos2PrinterStatusInfo` / Epos2 API result.
+- Strip stray newlines from error messages so loggers (e.g. `logger`) no longer split them across multiple lines.
+  - [Android] `getErrorMessage()` no longer appends `"\n"` by default; trim trailing whitespace; multi-segment messages joined by space.
+  - [iOS] Sanitize messages from `ePOS2Localizable.strings` and `MessageHelper` before returning to Flutter.
 - Backward compatible: existing `success`, `message`, `code`, `content` fields are preserved.
 
 ## 1.1.0
