@@ -42,23 +42,22 @@ interface JSONConvertable {
 inline fun <reified T : JSONConvertable> String.toObject(): T = Gson().fromJson(this, T::class.java)
 
 class EpsonEposPrinterInfo(
-    var ipAddress: String? = null,
-    var bdAddress: String? = null,
-    var macAddress: String? = null,
-    var model: String? = null,
-    var type: String? = null,
-    var printType: String? = null,
-    var target: String? = null
+    @SerializedName("ipAddress") var ipAddress: String? = null,
+    @SerializedName("bdAddress") var bdAddress: String? = null,
+    @SerializedName("macAddress") var macAddress: String? = null,
+    @SerializedName("model") var model: String? = null,
+    @SerializedName("type") var type: String? = null,
+    @SerializedName("printType") var printType: String? = null,
+    @SerializedName("target") var target: String? = null
 ) : JSONConvertable
 
 data class EpsonEposPrinterResult(
-    var type: String,
-    var success: Boolean,
-    var message: String? = null,
-    @SerializedName("status_code")
-    var statusCode: Int = EpsonStatusCode.UNKNOWN,
-    var code: Int? = null,
-    var content: Any? = null
+    @SerializedName("type") var type: String,
+    @SerializedName("success") var success: Boolean,
+    @SerializedName("message") var message: String? = null,
+    @SerializedName("status_code") var statusCode: Int = EpsonStatusCode.UNKNOWN,
+    @SerializedName("code") var code: Int? = null,
+    @SerializedName("content") var content: Any? = null
 ) : JSONConvertable
 
 /**

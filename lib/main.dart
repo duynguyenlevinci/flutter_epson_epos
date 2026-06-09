@@ -40,9 +40,9 @@ class EpsonEPOS {
     if (broadcast != null && broadcast.isNotEmpty) {
       params["broadcast"] = broadcast;
     }
-    String? rep = await _channel.invokeMethod('onDiscovery', params);
-    if (rep != null) {
-      final response = EpsonPrinterResponse.fromRawJson(rep);
+    final dynamic raw = await _channel.invokeMethod('onDiscovery', params);
+    if (raw != null) {
+      final response = _parseResponse(raw, type: 'onDiscovery');
       print("onDiscovery: $response");
       if (!response.success) {
         print(
