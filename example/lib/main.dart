@@ -11,7 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-final logger = Logger();
+final logger = Logger(filter: ProductionFilter());
 
 void main() {
   runApp(MyApp());
@@ -292,13 +292,19 @@ class _MyAppState extends State<MyApp> {
         return null;
       }
 
-      // Chờ một frame nếu boundary vẫn đang trong trạng thái cần paint lại,
-      // tránh lỗi "Failed assertion: 'debugNeedsPaint'".
-      if (boundary.debugNeedsPaint) {
-        await Future.delayed(const Duration(milliseconds: 20));
+      // Chờ widget paint xong trước khi chụp (debugNeedsPaint chỉ dùng được ở debug).
+      ui.Image? image;
+      for (var attempt = 0; attempt < 10; attempt++) {
+        await WidgetsBinding.instance.endOfFrame;
+        try {
+          image = await boundary.toImage(pixelRatio: 1.0);
+          break;
+        } catch (_) {
+          if (attempt == 9) rethrow;
+          await Future.delayed(const Duration(milliseconds: 20));
+        }
       }
-
-      final image = await boundary.toImage(pixelRatio: 1.0);
+      if (image == null) return null;
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return null;
 
@@ -338,7 +344,6 @@ class _MyAppState extends State<MyApp> {
     try {
       final response = await EpsonEPOS.onPrint(printer, commands);
       logger.d('Print image response: ${response.toString()}');
-    
     } catch (e) {
       logger.e('Print image error: $e');
     }
@@ -478,7 +483,7 @@ class _MyAppState extends State<MyApp> {
     );
     commands.add(command.addCut(EpsonEPOSCut.CUT_FEED));
     final response = await EpsonEPOS.onPrint(printer, commands);
-  
+
     logger.d(response.toString());
   }
 

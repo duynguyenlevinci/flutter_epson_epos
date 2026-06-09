@@ -31,6 +31,8 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import com.epson.epos2.Log as PrintLog
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 
 interface JSONConvertable {
@@ -114,6 +116,8 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private var mPrinter: Printer? = null
     private var mTarget: String? = null
     private val printers: MutableList<EpsonEposPrinterInfo> = mutableListOf()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var discoveryFinishRunnable: Runnable? = null
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
@@ -256,16 +260,64 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     /**
-     * Stop discovery printer
+     * Stop discovery printer. Loops while SDK reports ERR_PROCESSING so a new
+     * [Discovery.start] is not rejected with ERR_ILLEGAL.
      */
     private fun stopDiscovery() {
-        try {
-            Discovery.stop()
-        } catch (e: Epos2Exception) {
-            if (e.errorStatus != Epos2Exception.ERR_PROCESSING) {
-                Log.w(logTag, "stopDiscovery error", e)
+        discoveryFinishRunnable?.let { mainHandler.removeCallbacks(it) }
+        discoveryFinishRunnable = null
+        while (true) {
+            try {
+                Discovery.stop()
+                break
+            } catch (e: Epos2Exception) {
+                if (e.errorStatus != Epos2Exception.ERR_PROCESSING) {
+                    Log.w(logTag, "stopDiscovery error: ${e.errorStatus}", e)
+                    break
+                }
             }
         }
+    }
+
+    /**
+     * Epson TCP discovery sends UDP broadcast to find printers. On many Android
+     * POS devices (including Sunmi), 255.255.255.255 is blocked; the subnet
+     * broadcast (e.g. 192.168.1.255) must be used instead.
+     */
+    private fun resolveSubnetBroadcast(): String {
+        try {
+            val candidates = mutableListOf<String>()
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (!networkInterface.isUp || networkInterface.isLoopback) continue
+                for (address in networkInterface.interfaceAddresses) {
+                    val broadcast = address.broadcast ?: continue
+                    if (broadcast !is Inet4Address) continue
+                    val host = broadcast.hostAddress ?: continue
+                    if (host != "255.255.255.255") {
+                        candidates.add(host)
+                    }
+                }
+            }
+            if (candidates.isNotEmpty()) {
+                Log.d(logTag, "resolveSubnetBroadcast: $candidates")
+                return candidates.first()
+            }
+        } catch (e: Exception) {
+            Log.w(logTag, "resolveSubnetBroadcast failed", e)
+        }
+        return "255.255.255.255"
+    }
+
+    private fun getDiscoveryErrorMessage(errorStatus: Int): String = when (errorStatus) {
+        Epos2Exception.ERR_PARAM -> "Invalid discovery parameters."
+        Epos2Exception.ERR_ILLEGAL ->
+            "Discovery is already running. Wait for the current search to finish."
+        Epos2Exception.ERR_PROCESSING -> "Discovery is still processing."
+        Epos2Exception.ERR_FAILURE -> "Discovery failed. Check permissions and connection type."
+        Epos2Exception.ERR_NOT_FOUND -> "No printer found."
+        else -> "Discovery error (code $errorStatus). Check Bluetooth/Location permissions and network."
     }
 
     /**
@@ -292,29 +344,53 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         result: Result
     ) {
         val delay: Long = if (portType == Discovery.PORTTYPE_USB) 1000 else 7000
+        stopDiscovery()
         printers.clear()
+        val broadcastArg: String? = call.argument<String>("broadcast")
         val filter = FilterOption().apply {
             this.portType = portType
+            if (portType == Discovery.PORTTYPE_TCP || portType == Discovery.TYPE_ALL) {
+                broadcast = broadcastArg ?: resolveSubnetBroadcast()
+            }
         }
-        Log.d(logTag, "onDiscoveryPrinter: filter = $portType")
+        Log.d(
+            logTag,
+            "onDiscoveryPrinter: portType=$portType broadcast=${filter.broadcast}"
+        )
 
-        val resp = EpsonEposPrinterResult("onDiscoveryPrinter", false)
-        try {
-            Discovery.start(context, filter, mDiscoveryListener)
-            Handler(Looper.getMainLooper()).postDelayed({
-                resp.success = true
-                resp.statusCode = EpsonStatusCode.SUCCESS
-                resp.message = "Successfully!"
-                resp.content = printers
+        val resp = EpsonEposPrinterResult("onDiscovery", false)
+        mainHandler.post {
+            try {
+                Discovery.start(context, filter, mDiscoveryListener)
+                val finishRunnable = Runnable {
+                    resp.success = true
+                    resp.statusCode = EpsonStatusCode.SUCCESS
+                    resp.message = "Successfully!"
+                    resp.content = printers
+                    Log.d(logTag, "onDiscoveryPrinter: found ${printers.size} printer(s)")
+                    result.success(resp.toJSON())
+                    stopDiscovery()
+                }
+                discoveryFinishRunnable = finishRunnable
+                mainHandler.postDelayed(finishRunnable, delay)
+            } catch (e: Epos2Exception) {
+                Log.e(
+                    logTag,
+                    "onDiscoveryPrinter: Epos2Exception errorStatus=${e.errorStatus}",
+                    e
+                )
+                resp.success = false
+                resp.statusCode = epos2ExceptionToStatus(e.errorStatus)
+                resp.code = e.errorStatus
+                resp.message = getDiscoveryErrorMessage(e.errorStatus)
                 result.success(resp.toJSON())
-                stopDiscovery()
-            }, delay)
-        } catch (e: Exception) {
-            Log.e(logTag, "onDiscoveryPrinter: start not working for ${call.method}", e)
-            resp.success = false
-            resp.statusCode = EpsonStatusCode.ERR_FAILURE
-            resp.message = "Error while search printer"
-            result.success(resp.toJSON())
+            } catch (e: Exception) {
+                Log.e(logTag, "onDiscoveryPrinter: start not working for ${call.method}", e)
+                resp.success = false
+                resp.statusCode = EpsonStatusCode.ERR_FAILURE
+                resp.message = e.localizedMessage ?: "Error while search printer"
+                result.success(resp.toJSON())
+            }
         }
     }
 
@@ -992,6 +1068,9 @@ class EpsonEposPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 requestPermissions.toTypedArray(),
                 _REQUEST_PERMISSION
             )
+            result.success(true)
+        } else {
+            result.success(false)
         }
     }
 }
