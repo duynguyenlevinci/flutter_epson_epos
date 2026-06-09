@@ -201,16 +201,16 @@ class EpsonPrinterResponse {
 
   String toRawJson() => json.encode(toJson());
 
-  factory EpsonPrinterResponse.fromJson(Map<String, dynamic> json) =>
-      EpsonPrinterResponse(
-        type: json["type"] ?? '',
-        success: json["success"] ?? false,
-        statusCode: json["status_code"] is int
-            ? json["status_code"] as int
-            : EpsonStatusCode.unknown,
-        message: json["message"],
-        content: json["content"],
-      );
+  factory EpsonPrinterResponse.fromJson(Map<String, dynamic> json) {
+    final dynamic statusRaw = json["status_code"] ?? json["statusCode"];
+    return EpsonPrinterResponse(
+      type: json["type"]?.toString() ?? '',
+      success: json["success"] == true,
+      statusCode: statusRaw is int ? statusRaw : EpsonStatusCode.unknown,
+      message: json["message"]?.toString(),
+      content: json["content"],
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         "type": type,
