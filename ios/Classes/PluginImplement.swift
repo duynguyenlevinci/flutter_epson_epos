@@ -82,7 +82,7 @@ class PluginImplement: NSObject {
         if response != EPOS2_SUCCESS.rawValue {
             resp.statusCode = EpsonStatusCode.fromEposApi(response)
             resp.code = response
-            resp.message = MessageHelper.errorEpos(response, method: "start")
+            resp.message = MessageHelper.apiErrorMessage(response)
             return result(try? resp.toJSONString())
         }
         
@@ -287,8 +287,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
             if status != EPOS2_SUCCESS.rawValue {
                 // Try to read printer status info for a more specific error
                 let statusError = makeErrorMessage(printer.getStatus())
-                let message = MessageHelper.errorEpos(status, method: "sendData")
-                
+
                 resp.success = false
                 resp.code = status
                 if statusError.statusCode != EpsonStatusCode.unknown {
@@ -297,10 +296,10 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
                     resp.content = statusError.legacyCode
                 } else {
                     resp.statusCode = EpsonStatusCode.fromEposApi(status)
-                    resp.message = sanitizeAnyMessage(message)
-                    resp.content = "ERR_SEND_DATA_\(status)"
+                    resp.message = sanitizeAnyMessage(MessageHelper.apiErrorMessage(status))
+                    resp.content = MessageHelper.apiErrorCodeName(status)
                 }
-                
+
                 printer.clearCommandBuffer()
                 _ = printer.disconnect()
                 result(try resp.toJSONString())
@@ -330,10 +329,9 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         // Note: This API must be used from background thread only
         let result = printer.connect(target, timeout: Int(EPOS2_PARAM_DEFAULT))
         if result != EPOS2_SUCCESS.rawValue {
-            let message = MessageHelper.errorEpos(result, method: "connect")
             returnFailResultWith(
                 method: method,
-                message: sanitizeAnyMessage(message),
+                message: MessageHelper.apiErrorMessage(result),
                 statusCode: EpsonStatusCode.fromEposApi(result),
                 code: result
             )
@@ -356,8 +354,7 @@ extension PluginImplement: Epos2PtrReceiveDelegate {
         printer.clearCommandBuffer()
         
         if result != EPOS2_SUCCESS.rawValue {
-            let message = MessageHelper.errorEpos(result, method: "disconnect")
-            print("disconnectPrinter error: \(message)")
+            print("disconnectPrinter error: \(MessageHelper.apiErrorMessage(result))")
             return false
         }
         return true
