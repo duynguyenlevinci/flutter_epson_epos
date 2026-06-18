@@ -52,6 +52,20 @@ internal enum EposLocalizedStrings {
 }
 
 class MessageHelper {
+    /// Epson error code name (e.g. `ERR_CONNECT`) for `content` / logging.
+    class func apiErrorCodeName(_ resultCode: Int32) -> String {
+        return getEposErrorCodeName(resultCode)
+    }
+
+    /// Human-readable API error for Flutter `message`. Raw SDK code lives in `code`.
+    class func apiErrorMessage(_ resultCode: Int32) -> String {
+        return getEposErrorDescription(resultCode)
+    }
+
+    class func btApiErrorMessage(_ resultCode: Int32) -> String {
+        return getEposBtErrorDescription(resultCode)
+    }
+
     class func errorEpos(_ resultCode: Int32, method: String) -> String {
         return String(
             format: "%@\n%@\n\n%@\n%@\n",
@@ -90,6 +104,10 @@ class MessageHelper {
     }
 
     fileprivate class func getEposErrorText(_ error: Int32) -> String {
+        return getEposErrorDescription(error)
+    }
+
+    fileprivate class func getEposErrorCodeName(_ error: Int32) -> String {
         switch error {
         case EPOS2_SUCCESS.rawValue: return "SUCCESS"
         case EPOS2_ERR_PARAM.rawValue: return "ERR_PARAM"
@@ -107,12 +125,63 @@ class MessageHelper {
         case EPOS2_ERR_BOX_COUNT_OVER.rawValue: return "ERR_BOX_COUNT_OVER"
         case EPOS2_ERR_BOX_CLIENT_OVER.rawValue: return "ERR_BOX_CLIENT_OVER"
         case EPOS2_ERR_UNSUPPORTED.rawValue: return "ERR_UNSUPPORTED"
+        case EPOS2_ERR_DEVICE_BUSY.rawValue: return "ERR_DEVICE_BUSY"
+        case EPOS2_ERR_RECOVERY_FAILURE.rawValue: return "ERR_RECOVERY_FAILURE"
         case EPOS2_ERR_FAILURE.rawValue: return "ERR_FAILURE"
-        default: return String(format: "%d", error)
+        default: return "ERR_UNKNOWN"
+        }
+    }
+
+    fileprivate class func getEposErrorDescription(_ error: Int32) -> String {
+        switch error {
+        case EPOS2_SUCCESS.rawValue:
+            return "Operation completed successfully."
+        case EPOS2_ERR_PARAM.rawValue:
+            return "Invalid parameter. Check printer series, target address, or command data."
+        case EPOS2_ERR_CONNECT.rawValue:
+            return "Please check the connection of the printer."
+        case EPOS2_ERR_TIMEOUT.rawValue:
+            return "Connection timed out. The printer may be unreachable, offline, or busy."
+        case EPOS2_ERR_MEMORY.rawValue:
+            return "Not enough memory on the device to complete this operation."
+        case EPOS2_ERR_ILLEGAL.rawValue:
+            return "Operation is not allowed in the current printer or SDK state."
+        case EPOS2_ERR_PROCESSING.rawValue:
+            return "Another operation is still in progress. Wait and try again."
+        case EPOS2_ERR_NOT_FOUND.rawValue:
+            return "Printer not found. Run discovery again or verify the target address."
+        case EPOS2_ERR_IN_USE.rawValue:
+            return "Printer is already in use by another connection or application."
+        case EPOS2_ERR_TYPE_INVALID.rawValue:
+            return "Invalid printer type or connection type for this operation."
+        case EPOS2_ERR_DISCONNECT.rawValue:
+            return "Failed to disconnect from the printer. Check the connection status."
+        case EPOS2_ERR_ALREADY_OPENED.rawValue:
+            return "Printer connection is already open."
+        case EPOS2_ERR_ALREADY_USED.rawValue:
+            return "The requested printer resource is already in use."
+        case EPOS2_ERR_BOX_COUNT_OVER.rawValue:
+            return "Communication box count limit exceeded."
+        case EPOS2_ERR_BOX_CLIENT_OVER.rawValue:
+            return "Communication box client limit exceeded."
+        case EPOS2_ERR_UNSUPPORTED.rawValue:
+            return "This operation or feature is not supported on the selected printer."
+        case EPOS2_ERR_DEVICE_BUSY.rawValue:
+            return "Printer is busy. Retry after the current job finishes."
+        case EPOS2_ERR_RECOVERY_FAILURE.rawValue:
+            return "Automatic error recovery failed on the printer."
+        case EPOS2_ERR_FAILURE.rawValue:
+            return "An unknown printer error occurred."
+        default:
+            return "Unknown error (code \(error))."
         }
     }
 
     fileprivate class func getEposBtErrorText(_ error: Int32) -> String {
+        return getEposBtErrorDescription(error)
+    }
+
+    fileprivate class func getEposBtErrorCodeName(_ error: Int32) -> String {
         switch error {
         case EPOS2_BT_SUCCESS.rawValue: return "SUCCESS"
         case EPOS2_BT_ERR_PARAM.rawValue: return "ERR_PARAM"
@@ -121,7 +190,28 @@ class MessageHelper {
         case EPOS2_BT_ERR_ALREADY_CONNECT.rawValue: return "ERR_ALREADY_CONNECT"
         case EPOS2_BT_ERR_ILLEGAL_DEVICE.rawValue: return "ERR_ILLEGAL_DEVICE"
         case EPOS2_BT_ERR_FAILURE.rawValue: return "ERR_FAILURE"
-        default: return String(format: "%d", error)
+        default: return "ERR_UNKNOWN"
+        }
+    }
+
+    fileprivate class func getEposBtErrorDescription(_ error: Int32) -> String {
+        switch error {
+        case EPOS2_BT_SUCCESS.rawValue:
+            return "Bluetooth operation completed successfully."
+        case EPOS2_BT_ERR_PARAM.rawValue:
+            return "Invalid Bluetooth parameter."
+        case EPOS2_BT_ERR_UNSUPPORTED.rawValue:
+            return "Bluetooth operation is not supported on this device."
+        case EPOS2_BT_ERR_CANCEL.rawValue:
+            return "Bluetooth pairing or connection was cancelled."
+        case EPOS2_BT_ERR_ALREADY_CONNECT.rawValue:
+            return "Bluetooth device is already connected."
+        case EPOS2_BT_ERR_ILLEGAL_DEVICE.rawValue:
+            return "The selected Bluetooth device is not a supported Epson printer."
+        case EPOS2_BT_ERR_FAILURE.rawValue:
+            return "Bluetooth connection failed."
+        default:
+            return "Unknown Bluetooth error (code \(error))."
         }
     }
 
