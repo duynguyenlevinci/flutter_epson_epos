@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'epson_epos'
-  s.version          = '1.1.2'
+  s.version          = '1.1.3'
   s.summary          = 'Epson ePOS printer plugin.'
   s.description      = <<-DESC
 A Flutter plugin to discover Epson ePOS printers and send print commands.

@@ -1,3 +1,7 @@
+## 1.1.3
+
+- [iOS] Return human-readable error descriptions for API failures (connect, discovery, sendData). Raw SDK code remains in `code`; `message` shows description only.
+
 ## 1.1.2
 
 - Add unified `status_code: int` + `message: string` to print response.
